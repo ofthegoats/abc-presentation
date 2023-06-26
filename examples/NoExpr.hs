@@ -43,6 +43,7 @@ instance (Eq d, Num d, VectorSpace d e) => Num (Nagata d e) where
     | signum f == -1 = N (abs f) (invert df)
     | signum f == 0  = N f (error "derivative of abs at 0 is undefined!")
     | signum f == 1  = N f df
+    | otherwise = error "unexpected return from signum"
 
 instance (Fractional d, VectorSpace d e) => Fractional (Nagata d e) where
   recip (N f df) = N (recip f) ((- recip (f ^ 2)) # df)
