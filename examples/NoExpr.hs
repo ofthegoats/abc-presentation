@@ -105,16 +105,23 @@ instance (Eq d, Ord x, Num d) => VectorSpace d (Sparse x d) where
 g₂ :: Num x => x -> x
 g₂ x = abs x
 
-{- TODO reverse mode!
-   Haven't fully understood reverse mode yet.
-   Think the relevant gradient-representing abelian group must be a function?
-   The function must _accumulate_ operations but not execute them.
-   Then at the end the user will supply the seed 1.0 to get the full gradient.
-
-   The problems are:
-   - what function to supply so that evaluation is awaited for
-   - how to prove this is reverse mode? I am _providing_ several arguments after all...
+{- The problems are:
 
    After implementing reverse mode, it would be nice to have some wrappers around function execution.
    It would also be better for this to all be done at the type-level, and permit stacking properties.
 -}
+
+newtype Reverse d e = Reverse (d -> e)
+  deriving (Semigroup, Monoid) via (d -> e)
+
+instance (AbelianGroup e) => AbelianGroup (Reverse d e) where
+  invert (Reverse f) = Reverse $ \d -> invert $ f d
+
+instance VectorSpace d e => VectorSpace d (Reverse d e) where
+  μ # (Reverse f) = Reverse $ \d -> μ # f d
+
+-- >>> let (N pri (Reverse tan)) = g₁ (N pi (Reverse $ \d -> Sparse $ M.singleton "d/dx" d)) (N 1.0 (Reverse $ \d -> Sparse $ M.singleton "d/dy" d))
+-- >>> pri
+-- >>> tan 1.0
+-- 775.1583323182499
+-- Sparse (fromList [("d/dx",2109.5263988877678),("d/dy",5141.877007189466)])
