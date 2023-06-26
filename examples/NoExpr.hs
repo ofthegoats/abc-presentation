@@ -88,6 +88,30 @@ instance (Floating d, VectorSpace d e) => Floating (Nagata d e) where
 g₁ :: Floating x => x -> x -> x
 g₁ x y = sinh x ** exp y + 2
 
+{- NOTE on Dense representation
+   A sensible function would be something like (String -> d) where String = "d/dx" or something...
+   But this does just seem less useful than the Sparse representation, at least for interactive use.
+-}
+
+newtype Dense x d = Dense (x -> d)
+
+instance (Num d) => Semigroup (Dense x d) where
+  (Dense f) <> (Dense g) = Dense $ \x -> f x + g x
+
+instance (Num d) => Monoid (Dense x d) where
+  mempty = Dense $ const 0
+
+instance (Num d) => AbelianGroup (Dense x d) where
+  invert (Dense f) = Dense $ \x -> (negate . f) x
+
+instance (Eq d, Num d) => VectorSpace d (Dense x d) where
+  μ # (Dense f) = Dense $ \x -> μ * f x
+
+-- >>> let (N pri (Dense tan)) = g₁ (N pi $ Dense $ \case { 'x' -> 1.0 ; _ -> 0.0 }) (N 1 $ Dense $ \case {'y' -> 1.0 ; _ -> 0.0})
+-- >>> pri
+-- >>> (tan 'x', tan 'y')
+-- 775.1583323182499
+-- (2109.5263988877678,5141.877007189466)
 
 newtype Sparse x d = Sparse (M.Map x d)
   deriving stock (Show)
