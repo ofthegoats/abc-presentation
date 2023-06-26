@@ -1,11 +1,11 @@
--- |
+-- | Automatic Differentiation module
 
 {-# LANGUAGE DerivingVia #-}
 {-# LANGUAGE FunctionalDependencies #-}
 {-# LANGUAGE UndecidableInstances #-}
 {-# LANGUAGE LambdaCase #-}
 
-module NoExpr where
+module AD where
 
 import qualified Data.Map as M
 
@@ -35,8 +35,8 @@ class (Eq d, Num d, AbelianGroup e) => VectorSpace d e | e -> d where
 class VectorSpace d e => Kronecker v d e where
   delta :: v -> e
 
-raise :: (Kronecker v d e) => d -> v -> Nagata d e
-raise d v = N d $ delta v
+raiseᴺ :: (Kronecker v d e) => d -> v -> Nagata d e
+raiseᴺ d v = N d $ delta v
 
 data Nagata d e = N { primalᴺ :: d , tangentᴺ :: e }
   deriving stock (Show)
