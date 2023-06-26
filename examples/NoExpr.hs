@@ -9,11 +9,11 @@ module NoExpr where
 
 import qualified Data.Map as M
 
-f₁ :: Num x => x -> x
-f₁ x = x ^ 2 + 2 * x - 2
+f₁ :: Floating x => x -> x
+f₁ x = x ** 2 + 2 * x - 2
 
-f₂ :: Fractional x => x -> x
-f₂ x = x / (2 * (x^2) + 1)
+f₂ :: Floating x => x -> x
+f₂ x = x / (2 * (x ** 2) + 1)
 
 f₃ :: Floating x => x -> x
 f₃ x = exp (sin x)
@@ -53,7 +53,7 @@ instance (Eq d, Num d, VectorSpace d e) => Num (Nagata d e) where
     | otherwise = error "unexpected return from signum"
 
 instance (Fractional d, VectorSpace d e) => Fractional (Nagata d e) where
-  recip (N f df) = N (recip f) ((- recip (f ^ 2)) # df)
+  recip (N f df) = N (recip f) ((- recip (f ^^ 2)) # df)
   fromRational q = N (fromRational q) zero
 
 instance (Floating d, VectorSpace d e) => Floating (Nagata d e) where
@@ -62,14 +62,14 @@ instance (Floating d, VectorSpace d e) => Floating (Nagata d e) where
   log (N f df) = N (log f) (recip f # df)
   sin (N f df) = N (sin f) (cos f # df)
   cos (N f df) = N (cos f) ((- sin f) # df)
-  asin (N f df) = N (asin f) ((recip . sqrt) (1 - f^2) # df)
-  acos (N f df) = N (acos f) ((negate . recip . sqrt) (1 - f^2) # df)
-  atan (N f df) = N (atan f) (recip (1 + f^2) # df)
+  asin (N f df) = N (asin f) ((recip . sqrt) (1 - f ** 2) # df)
+  acos (N f df) = N (acos f) ((negate . recip . sqrt) (1 - f ** 2) # df)
+  atan (N f df) = N (atan f) (recip (1 + f ** 2) # df)
   sinh (N f df) = N (sinh f) (cosh f # df)
   cosh (N f df) = N (cosh f) (sinh f # df)
-  asinh (N f df) = N (asinh f) ((recip . sqrt) (f^2 + 1) # df)
-  acosh (N f df) = N (acosh f) ((recip . sqrt) (f^2 - 1) # df)
-  atanh (N f df) = N (atanh f) (recip (1 - f^2) # df)
+  asinh (N f df) = N (asinh f) ((recip . sqrt) (f ** 2 + 1) # df)
+  acosh (N f df) = N (acosh f) ((recip . sqrt) (f ** 2 - 1) # df)
+  atanh (N f df) = N (atanh f) (recip (1 - f ** 2) # df)
 
 g₁ :: Floating x => x -> x -> x
 g₁ x y = sinh x ** exp y + 2
