@@ -94,13 +94,20 @@ instance (Eq d, Num d) => VectorSpace d (Dense x d) where
 
 newtype Sparse x d = Sparse (M.Map x d)
   deriving stock (Show)
-  deriving (Monoid, Semigroup) via (M.Map x d)
+  deriving (Monoid) via (M.Map x d)
+  deriving (Functor) via (M.Map x)
+
+instance (Ord x, Num d) => Semigroup (Sparse x d) where
+  (Sparse m₁) <> (Sparse m₂) = Sparse $ M.unionWith (+) m₁ m₂
 
 instance (Ord x, Num d) => AbelianGroup (Sparse x d) where
-  invert (Sparse m) = Sparse $ negate <$> m
+  invert m = negate <$> m
 
 instance (Eq d, Ord x, Num d) => VectorSpace d (Sparse x d) where
-  μ # (Sparse m) = Sparse $ (*μ) <$> m
+  μ # m = (*μ) <$> m
+
+instance (Ord x, Eq d, Num d) => Kronecker x d (Sparse x d) where
+  delta v = Sparse $ M.singleton v 1
 
 -- >>> g₁ (N pi $ Sparse $ M.singleton "d/dx" 1.0) (N 1 $ Sparse $ M.singleton "d/dy" 1.0)
 -- N {primalᴺ = 775.1583323182499, tangentᴺ = Sparse (fromList [("d/dx",2109.5263988877678),("d/dy",5141.877007189466)])}
