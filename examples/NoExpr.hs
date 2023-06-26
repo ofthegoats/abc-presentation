@@ -2,6 +2,7 @@
 
 {-# LANGUAGE DerivingVia #-}
 {-# LANGUAGE FunctionalDependencies #-}
+{-# LANGUAGE UndecidableInstances #-}
 {-# LANGUAGE LambdaCase #-}
 
 module NoExpr where
@@ -142,3 +143,40 @@ instance Kronecker x d e => Kronecker x d (Reverse d e) where
 -- >>> tan 1.0
 -- 775.1583323182499
 -- Sparse (fromList [("d/dx",2109.5263988877678),("d/dy",5141.877007189466)])
+
+newtype LReverse d e = LReverse (d -> e)
+  deriving (Semigroup, Monoid) via (d -> e)
+  deriving (AbelianGroup, Kronecker x d) via (Reverse d e)
+-- * ASSUMES: Linear f => x # f y == f $ x * y
+
+instance VectorSpace d e => VectorSpace d (LReverse d e) where
+  μ # (LReverse f) = LReverse $ \d -> f (μ * d) -- use assumption for optimisation
+
+-- >>> let (N pri (LReverse tan)) = g₁ (N pi (LReverse $ \d -> Sparse $ M.singleton "d/dx" d)) (N 1.0 (LReverse $ \d -> Sparse $ M.singleton "d/dy" d))
+-- >>> pri
+-- >>> tan 1.0
+-- 775.1583323182499
+-- Sparse (fromList [("d/dx",2109.5263988877673),("d/dy",5141.877007189466)])
+
+newtype Cayley e = Cayley (e -> e)
+-- * ASSUMES: Cayley f => x <> f y == f $ x <> y
+-- ? guaranteed by x, y : e -> e
+
+instance Semigroup (Cayley e) where
+  (Cayley f) <> (Cayley g) = Cayley $ f . g
+
+instance Monoid e => Monoid (Cayley e) where
+  mempty = Cayley id
+
+instance (AbelianGroup e) => AbelianGroup (Cayley e) where
+  invert (Cayley f) = Cayley $ invert <> f
+
+instance VectorSpace d e => VectorSpace d (Cayley e) where
+  μ # (Cayley f) = Cayley $ \e -> e <> (μ # f mempty)
+  {- TODO investigate if this can be optimized a la Cayley representations
+     previous attempt led to bogus results, @Cayley $ (μ #) <> f@
+     @min-nguyen had a lead earlier?
+  -}
+
+instance Kronecker x d e => Kronecker x d (Cayley e) where
+  delta v = Cayley $ \e -> e <> delta v
