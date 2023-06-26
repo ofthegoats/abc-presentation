@@ -92,6 +92,9 @@ instance (Num d) => AbelianGroup (Dense x d) where
 instance (Eq d, Num d) => VectorSpace d (Dense x d) where
   μ # (Dense f) = Dense $ \x -> μ * f x
 
+instance (Eq x, Eq d, Num d) => Kronecker x d (Dense x d) where
+  delta v = Dense $ \w -> if v == w then 1 else 0
+
 -- >>> let (N pri (Dense tan)) = g₁ (N pi $ Dense $ \case { 'x' -> 1.0 ; _ -> 0.0 }) (N 1 $ Dense $ \case {'y' -> 1.0 ; _ -> 0.0})
 -- >>> pri
 -- >>> (tan 'x', tan 'y')
@@ -129,6 +132,10 @@ instance (AbelianGroup e) => AbelianGroup (Reverse d e) where
 
 instance VectorSpace d e => VectorSpace d (Reverse d e) where
   μ # (Reverse f) = Reverse $ \d -> μ # f d
+
+instance Kronecker x d e => Kronecker x d (Reverse d e) where
+  delta v = Reverse $ \d -> d # delta v
+  -- NOTE there should be lots of optimisations available here so long as we know the type, using {-# OVERLAPS #-}
 
 -- >>> let (N pri (Reverse tan)) = g₁ (N pi (Reverse $ \d -> Sparse $ M.singleton "d/dx" d)) (N 1.0 (Reverse $ \d -> Sparse $ M.singleton "d/dy" d))
 -- >>> pri
