@@ -31,6 +31,12 @@ class Monoid e => AbelianGroup e where
 class (Eq d, Num d, AbelianGroup e) => VectorSpace d e | e -> d where
   (#) :: d -> e -> e
 
+class VectorSpace d e => Kronecker v d e where
+  delta :: v -> e
+
+raise :: (Kronecker v d e) => d -> v -> Nagata d e
+raise d v = N d $ delta v
+
 data Nagata d e = N { primalᴺ :: d , tangentᴺ :: e }
   deriving stock (Show)
 
@@ -114,12 +120,6 @@ instance (Ord x, Eq d, Num d) => Kronecker x d (Sparse x d) where
 
 g₂ :: Num x => x -> x
 g₂ x = abs x
-
-{- The problems are:
-
-   After implementing reverse mode, it would be nice to have some wrappers around function execution.
-   It would also be better for this to all be done at the type-level, and permit stacking properties.
--}
 
 newtype Reverse d e = Reverse (d -> e)
   deriving (Semigroup, Monoid) via (d -> e)
