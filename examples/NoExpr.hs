@@ -6,29 +6,7 @@
 
 module NoExpr where
 
-import Data.Semigroup (Sum(..))
 import qualified Data.Map as M
-
--- Duals are only any good for unary functions...
-
-data Dual d = D { primalᴰ :: d , tangentᴰ :: d }
-  deriving stock (Show)
-
-instance Num d => Num (Dual d) where
-  (D f df) + (D g dg) = D (f + g) (df + dg)
-  (D f df) * (D g dg) = D (f * g) (f * dg + g * df)
-  negate (D f df) = D (negate f) (negate df)
-  fromInteger z = D (fromInteger z) 0
-
-instance Fractional d => Fractional (Dual d) where
-  recip (D f df) = D (recip f) (- df / (f ^ 2))
-  fromRational q = D (fromRational q) 0
-
-instance Floating d => Floating (Dual d) where
-  pi = D pi 0
-  exp (D f df) = D (exp f) (df * exp f)
-  sin (D f df) = D (sin f) (df * cos f)
-  cos (D f df) = D (cos f) (-df * sin f)
 
 f₁ :: Num x => x -> x
 f₁ x = x ^ 2 + 2 * x - 2
