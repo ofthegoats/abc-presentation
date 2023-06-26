@@ -2,6 +2,7 @@
 
 {-# LANGUAGE DerivingVia #-}
 {-# LANGUAGE FunctionalDependencies #-}
+{-# LANGUAGE LambdaCase #-}
 
 module NoExpr where
 
@@ -87,14 +88,19 @@ instance (Floating d, VectorSpace d e) => Floating (Nagata d e) where
 g₁ :: Floating x => x -> x -> x
 g₁ x y = sinh x ** exp y + 2
 
--- >>> g₁ (N pi $ M.singleton "d/dx" 1.0) (N 1 $ M.singleton "d/dy" 1.0)
--- N {primalᴺ = 775.1583323182499, tangentᴺ = fromList [("d/dx",2109.5263988877678),("d/dy",5141.877007189466)]}
 
-instance (Ord x, Num d) => AbelianGroup (M.Map x d) where
-  invert m = negate <$> m
+newtype Sparse x d = Sparse (M.Map x d)
+  deriving stock (Show)
+  deriving (Monoid, Semigroup) via (M.Map x d)
 
-instance (Eq d, Ord x, Num d) => VectorSpace d (M.Map x d) where
-  μ # m = (*μ) <$> m
+instance (Ord x, Num d) => AbelianGroup (Sparse x d) where
+  invert (Sparse m) = Sparse $ negate <$> m
+
+instance (Eq d, Ord x, Num d) => VectorSpace d (Sparse x d) where
+  μ # (Sparse m) = Sparse $ (*μ) <$> m
+
+-- >>> g₁ (N pi $ Sparse $ M.singleton "d/dx" 1.0) (N 1 $ Sparse $ M.singleton "d/dy" 1.0)
+-- N {primalᴺ = 775.1583323182499, tangentᴺ = Sparse (fromList [("d/dx",2109.5263988877678),("d/dy",5141.877007189466)])}
 
 g₂ :: Num x => x -> x
 g₂ x = abs x
