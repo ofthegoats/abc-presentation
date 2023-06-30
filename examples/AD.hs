@@ -96,6 +96,7 @@ instance (Eq d, Num d) => VectorSpace d (Dense x d) where
 instance (Eq x, Eq d, Num d) => Kronecker x d (Dense x d) where
   delta v = Dense $ \w -> if v == w then 1 else 0
 
+
 -- >>> let (N pri (Dense tan)) = g₁ (N pi $ Dense $ \case { 'x' -> 1.0 ; _ -> 0.0 }) (N 1 $ Dense $ \case {'y' -> 1.0 ; _ -> 0.0})
 -- >>> pri
 -- >>> (tan 'x', tan 'y')
@@ -180,3 +181,13 @@ instance VectorSpace d e => VectorSpace d (Cayley e) where
 
 instance Kronecker x d e => Kronecker x d (Cayley e) where
   delta v = Cayley $ \e -> e <> delta v
+
+
+-- | see if the `Let` binder used by Tom can be used here... but using the normal Haskell binder!
+h₁ :: Num x => x -> x
+h₁ x = (x + x) * (x + x)
+
+h₂ :: Num x => x -> x
+h₂ x = let !y = x + x
+       in y * y
+-- * NOTE check via Haskell debugger & `:step`
