@@ -1,87 +1,90 @@
--- | toy PPL
-
-{-# LANGUAGE GADTs #-}
-{-# LANGUAGE LambdaCase #-}
-
 module Probability where
 
-import AD
-import qualified Data.Map as M
+import qualified System.Random.MWC as MWC
+-- NOTE this provides most of these distributions, probably /much/ faster. Below purely for reference!
 
-{-
-if we use the probability spaces proposed on nlab we will not have to think about sigma algebras
-this makes sense... we don't really use them besides to have an event space
-but we don't need a event space, do we really?
--}
+import Control.Monad ( replicateM )
+import Control.Monad.Trans.Reader ( ReaderT(runReaderT), ask )
+import Control.Monad.Trans.Class ( MonadTrans(lift) )
 
-type a |-> b = a -> b
--- * restriction, representing specifically a MEASURABLE MAP
--- this should actually be fairly permissive?
+newtype RandVar a = RandVar { sample :: ReaderT MWC.GenIO IO a }
 
-instance Num b => Num (a |-> b) where
-  x + y = \ω -> x ω + y ω
-  x * y = \ω -> x ω * y ω
-  negate x = negate . x
-  abs x = abs . x
-  fromInteger x = const $ fromInteger x
+-- | auxiliary function to write new distributions idiomatically
+raise :: (MWC.GenIO -> IO a) -> RandVar a
+raise f = RandVar $ ask >>= lift . f
 
-instance Fractional b => Fractional (a |-> b) where
-  recip x = recip . x
-  fromRational x = const $ fromRational x
+-- | sample from a random variable, also given a generator
+random :: RandVar a -> MWC.GenIO -> IO a
+random x g = runReaderT (sample x) g
 
-instance Floating b => Floating (a |-> b) where
-  exp x = exp . x
-  log x = log . x
+-- | standard uniform distribution
+uniform :: RandVar Double
+uniform = raise $ \gen -> MWC.uniform gen
 
-class PSpace x d where
-  μ :: d -> x -> Double
+-- | bernoulli distribution
+-- * example of making a distribution with an inverse CDF
+bernoulli :: Double -> RandVar Bool
+bernoulli p = raise $ \gen -> do
+  x <- random uniform gen
+  return $ x <= p
 
-data UniformD = UniformD Integer
+-- | categorical distribution --- generalises bernoulli
+-- ^ @v@ does not need to be normalised, this function will normalise it
+categorical :: [(a, Double)] -> RandVar a
+categorical v = raise $ \gen -> do
+  x <- random uniform gen
+  error "TODO implement categorical"
+  where
+    s = sum . map snd $ v
+    w = fst $ foldr (\(x, p) (aca, acp) -> let p' = p/s in ((x, acp + p') : aca, p' + acp)) ([], 0) v
+    -- [(val, UB)]
 
-instance PSpace Integer UniformD where
-  μ (UniformD n) x
-    | x <= 0 || x > n = 0
-    | otherwise = 1 / (fromIntegral n)
+deterministic :: a -> RandVar a
+deterministic x = raise $ const $ return x
 
-data UniformC = UniformC Double Double
+-- | binomial distribution
+-- * example of making a distribution using another distribution
+binomial :: Int -> Double -> RandVar Int
+binomial n p = raise $ \gen -> do
+  xs <- replicateM n $ random (bernoulli p) gen
+  return $ foldr (\x acc -> if x then acc + 1 else acc) 0 xs
 
-instance PSpace Double UniformC where
-  μ (UniformC a b) x
-    | a <= x && x <= b = 1 / (b - a)
-    | otherwise = error ""
+-- | TODO gaussian distribution
+-- * TODO more complicated example of making another distribution (Box-Muller)
+gaussian :: Double -> Double -> RandVar Double
+gaussian μ σ² = error "TODO implement gaussian"
 
-{-
-let's make an example now
-suppose that we roll a 6-sided die getting a result x
-then we eat |3-x| pierogi
-so we have a random variabe x : int -> int ; ω |-> abs (3 - ω)
-we assume that the die is evenly weighted, ie ω <- U[1,6]
--}
+-- * toy example of a higher-order random variable
+equal :: Eq a => RandVar a -> RandVar a -> RandVar Bool
+equal x y = raise $ \gen -> do
+  x₀ <- random x gen
+  y₀ <- random y gen
+  return $ x₀ == y₀
 
-d6 :: UniformD
-d6 = UniformD 6
+-- * toy example of a discrete distribution
+d6 :: RandVar Int
+d6 = categorical [(d, 1) | d <- [1 .. 6]]
 
-x :: Integer |-> Integer
-x ω = abs (3 - ω)
+-- use random variables like numbers
+instance Num a => Num (RandVar a) where
+  x + y = raise $ \gen -> do { x' <- random x gen ; y' <- random y gen ; return $ x' + y' }
+  x * y = raise $ \gen -> do { x' <- random x gen ; y' <- random y gen ; return $ x' * y' }
+  abs x = raise $ \gen -> do { x' <- random x gen ; return $ abs x' }
+  signum x = raise $ \gen -> do { x' <- random x gen ; return $ signum x'}
+  negate x = raise $ \gen -> do { x' <- random x gen ; return $ negate x'}
+  fromInteger x = deterministic $ fromInteger x
 
-squash :: (Ord a) => (b -> b -> b) -> [(a,b)] -> [(a,b)]
-squash f = M.toList . M.fromListWith f
+-- the pierogi example I used earlier, to demonstrate how having random variables rather than just distributions should be useful
+pierogi :: RandVar Int
+pierogi = abs $ d6 - 3
 
--- >>> squash (+) $ map (\ω -> (x ω, μ d6 ω)) [1 .. 6]
--- [(0,0.16666666666666666),(1,0.3333333333333333),(2,0.3333333333333333),(3,0.16666666666666666)]
+-- continue the trend with particularly useful mathematical functions
+instance Fractional a => Fractional (RandVar a) where
+  recip x = raise $ \gen -> do { x' <- random x gen ; return $ recip x' }
+  fromRational x = deterministic $ fromRational x
 
-{-
-so we can see the distribution for how many pierogi we eat
+instance Floating a => Floating (RandVar a) where
+  exp x = raise $ \gen -> do { x' <- random x gen ; return $ exp x'}
+  log x = raise $ \gen -> do { x' <- random x gen ; return $ log x'}
 
-what would be a comfortable way to wrap this, or to say that "the outcomes I am giving you are distributed so and so"
-literally a probability space.
-but also, what we have above is a probability space (we specify the outcomes by type and provide a distribution)
-
-here let's just use a pair since it's a probability space that's a value...
-
-(I may refactor the naming later)
--}
-
-{-
-TODO how to make joint distributions? (think I will need applicatives... at least in the blog example, perhaps I can make something better, but nonetheless it would be preferable)
--}
+-- TODO some simple inference methods
