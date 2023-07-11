@@ -81,6 +81,14 @@ geometric p = raise $ \gen -> do
     else do
       z <- random (geometric p) gen
       return $ 1 + z
+-- | exponential distribution
+exponential :: Double -> RandVar Double
+exponential λ =
+  let x = uniform
+  in raise $ \gen -> do
+    p <- random x gen
+    return $ - (1 / λ) * log (1 - p)
+
 -- | gaussian distribution
 -- * more complicated example of making another distribution (Box-Muller)
 -- * TODO replace with polar method, to show rejection sampling
