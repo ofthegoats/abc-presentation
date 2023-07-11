@@ -32,6 +32,12 @@ random x g = runReaderT (sample x) g
 uniform :: RandVar Double
 uniform = raise $ \gen -> MWC.uniform gen
 
+-- | generalised uniform distribution
+uniform' :: Double -> Double -> RandVar Double
+uniform' a b = raise $ \gen -> do
+  x <- random uniform gen
+  return $ a + x * (b - a)
+
 -- | bernoulli distribution
 -- * example of making a distribution with an inverse CDF
 bernoulli :: Double -> RandVar Bool
