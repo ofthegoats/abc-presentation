@@ -128,4 +128,35 @@ instance Floating a => Floating (RandVar a) where
   pi = deterministic pi
 
 
--- TODO some simple inference methods
+-- * a linear model and some inference over it
+lm :: Double -> RandVar Double
+lm x =
+  let
+    α = 2
+    β = 1
+    e = gaussian 0 3
+  in raise $ \gen -> do
+    e' <- random e gen
+    return $ α + x * β + e'
+
+infer_lm_lse :: [(Double, Double)] -> (Double, Double)
+infer_lm_lse v =
+  let
+    n = fromIntegral $ length v
+    μx = ((sum . map fst) v) / n
+    μy = ((sum . map snd) v) / n
+    ssxx = sum . map (\(x, _) -> (x - μx)^2) $ v
+    ssxy = sum . map (\(x, y) -> (x - μx) * (y - μy)) $ v
+    β = ssxy / ssxx
+    α = μy - β * μx
+  in (α, β)
+
+-- expecting something around (2, 1)
+--
+-- >>> g <- MWC.createSystemRandom
+-- >>> ys <- mapM (\x -> random (lm x) g) [1 .. 100]
+-- >>> let d = zip [1 .. 100] ys
+-- >>> infer_lm_lse d
+-- (2.308739972208116,0.9967936772561005)
+
+-- TODO some simple inference methods, generalised
