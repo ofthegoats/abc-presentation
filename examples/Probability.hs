@@ -10,6 +10,16 @@ import Data.Foldable ( minimumBy )
 
 newtype RandVar a = RandVar { sample :: ReaderT MWC.GenIO IO a }
 
+instance Functor RandVar where
+  fmap f x = raise $ \gen -> do { x' <- random x gen ; return $ f x' }
+
+instance Applicative RandVar where
+  pure x = deterministic x
+  f <*> x = raise $ \gen -> do { f' <- random f gen ; x' <- random x gen ; return $ f' x' }
+
+instance Monad RandVar where
+  x >>= f = raise $ \gen -> do { x' <- random x gen ; random (f x') gen }
+
 -- | auxiliary function to write new distributions idiomatically
 raise :: (MWC.GenIO -> IO a) -> RandVar a
 raise f = RandVar $ ask >>= lift . f
@@ -46,10 +56,14 @@ deterministic x = raise $ const $ return x
 
 -- | binomial distribution
 -- * example of making a distribution using another distribution
+-- * example of using @fmap@ on a random variable
 binomial :: Int -> Double -> RandVar Int
 binomial n p = raise $ \gen -> do
-  xs <- replicateM n $ random (bernoulli p) gen
-  return $ foldr (\x acc -> if x then acc + 1 else acc) 0 xs
+  xs <- replicateM n $ random (bernoulli') gen
+  return $ sum xs
+  where
+    bernoulli' :: RandVar Int
+    bernoulli' = (\x -> if x then 1 else 0) <$> bernoulli p
 
 -- | TODO gaussian distribution
 -- * TODO more complicated example of making another distribution (Box-Muller)
