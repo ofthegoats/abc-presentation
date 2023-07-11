@@ -71,6 +71,16 @@ binomial n p = raise $ \gen -> do
     bernoulli' :: RandVar Int
     bernoulli' = (\x -> if x then 1 else 0) <$> bernoulli p
 
+-- | geometric distribution
+-- * example of a distribution defined recursively
+geometric :: Double -> RandVar Int
+geometric p = raise $ \gen -> do
+  x <- random (bernoulli p) gen
+  if x
+    then return 0
+    else do
+      z <- random (geometric p) gen
+      return $ 1 + z
 -- | gaussian distribution
 -- * more complicated example of making another distribution (Box-Muller)
 -- * TODO replace with polar method, to show rejection sampling
