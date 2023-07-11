@@ -71,10 +71,17 @@ binomial n p = raise $ \gen -> do
     bernoulli' :: RandVar Int
     bernoulli' = (\x -> if x then 1 else 0) <$> bernoulli p
 
--- | TODO gaussian distribution
--- * TODO more complicated example of making another distribution (Box-Muller)
+-- | gaussian distribution
+-- * more complicated example of making another distribution (Box-Muller)
+-- * TODO replace with polar method, to show rejection sampling
 gaussian :: Double -> Double -> RandVar Double
-gaussian μ σ² = error "TODO implement gaussian"
+gaussian μ σ² =
+  let u = uniform
+      v = uniform
+      z = sqrt (-2 * log u) * cos (2 * pi * v)
+  in raise $ \gen -> do
+    z' <- random z gen
+    return (sqrt σ² * z' + μ)
 
 -- * toy example of a higher-order random variable
 equal :: Eq a => RandVar a -> RandVar a -> RandVar Bool
@@ -108,5 +115,17 @@ instance Fractional a => Fractional (RandVar a) where
 instance Floating a => Floating (RandVar a) where
   exp x = raise $ \gen -> do { x' <- random x gen ; return $ exp x'}
   log x = raise $ \gen -> do { x' <- random x gen ; return $ log x'}
+  sin x = raise $ \gen -> do { x' <- random x gen ; return $ sin x'}
+  cos x = raise $ \gen -> do { x' <- random x gen ; return $ cos x'}
+  asin x = raise $ \gen -> do { x' <- random x gen ; return $ asin x'}
+  acos x = raise $ \gen -> do { x' <- random x gen ; return $ acos x'}
+  atan x = raise $ \gen -> do { x' <- random x gen ; return $ atan x'}
+  sinh x = raise $ \gen -> do { x' <- random x gen ; return $ sinh x'}
+  cosh x = raise $ \gen -> do { x' <- random x gen ; return $ cosh x'}
+  asinh x = raise $ \gen -> do { x' <- random x gen ; return $ asinh x'}
+  acosh x = raise $ \gen -> do { x' <- random x gen ; return $ acosh x'}
+  atanh x = raise $ \gen -> do { x' <- random x gen ; return $ atanh x' }
+  pi = deterministic pi
+
 
 -- TODO some simple inference methods
