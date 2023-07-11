@@ -177,4 +177,16 @@ infer_lm_lse v =
 -- >>> infer_lm_lse d
 -- (2.308739972208116,0.9967936772561005)
 
--- TODO some simple inference methods, generalised
+metropolis_hastings :: (Double -> Double) -> Double -> Int -> RandVar [Double]
+metropolis_hastings f σ² n = gaussian 0 10 >>= \x -> mh x n
+  where
+    mh :: Double -> Int -> RandVar [Double]
+    mh x 0 = return [x]
+    mh x n = do
+      x' <- gaussian x σ²
+      let α = f x' / f x
+      accept <- bernoulli α
+      if accept -- α >= 1 => bernoulli α == 1
+        then mh x' (n-1) >>= \xs -> return $ x' : xs
+        else mh x (n-1) >>= \xs -> return $ x : xs
+
