@@ -6,6 +6,7 @@ import qualified System.Random.MWC as MWC
 import Control.Monad ( replicateM )
 import Control.Monad.Trans.Reader ( ReaderT(runReaderT), ask )
 import Control.Monad.Trans.Class ( MonadTrans(lift) )
+import Data.Foldable ( minimumBy )
 
 newtype RandVar a = RandVar { sample :: ReaderT MWC.GenIO IO a }
 
@@ -33,7 +34,8 @@ bernoulli p = raise $ \gen -> do
 categorical :: [(a, Double)] -> RandVar a
 categorical v = raise $ \gen -> do
   x <- random uniform gen
-  error "TODO implement categorical"
+  let w' = filter (\i -> snd i >= x) w
+  return . fst . minimumBy (\x y -> snd x `compare` snd y) $ w'
   where
     s = sum . map snd $ v
     w = fst $ foldr (\(x, p) (aca, acp) -> let p' = p/s in ((x, acp + p') : aca, p' + acp)) ([], 0) v
