@@ -1,4 +1,6 @@
-#+title: Automatic Differentiation Resources
+#+title: ProbFX Internship
+
+## Automatic Differentiation
 
 - [[https://arxiv.org/abs/2212.11088][Forward or Reverse Mode Automatic Differentiation: What's the Difference?]] ---
   Schrijvers et al
@@ -7,3 +9,14 @@
 
 - [[https://dl.acm.org/doi/abs/10.1145/289423.289442][Functional Differentiation of Computer Programs]] --- Karczmarczuk --- old paper
   but potentially useful for background
+
+## Probabilistic Programming
+
+Moving towards likelihood-free programming. This means new distributions are
+written as models which specify how to generate samples from that distribution.
+More interestingly, *we do not need to know the probability density function*.
+
+This means we can compose distributions/random variables with usual arithmetic
+functions and /not worry about what happens to the density function!/
+
+See #6 for inference methods
