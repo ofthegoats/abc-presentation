@@ -37,3 +37,33 @@ abcRejection n y ϵ s dist m π = do
      then return [θ]
      else return [])
     (abcRejection (n-1) y ϵ s dist m π)
+
+abcMCMC ::
+  Int -- ^ @n@ number of iterations
+  -> [y] -- ^ @y@ real-world sample
+  -> ([y] -> [y] -> Double) -- ^ @k@ kernel
+  -> (p -> RandVar y) -- ^ @x@ generative model assumed
+  -> RandVar p -- ^ @π@ prior
+  -> (p -> Double) -- ^ prior density function
+  -> (p -> RandVar p) -- ^ transition kernel
+  -> (p -> p -> Double) -- ^ transition kernel density function
+  -> RandVar [p]
+abcMCMC 0 _ _ _ _ _ _ _ = return []
+abcMCMC n y k x π πD q qD = do
+  θ <- π
+  y' <- replicateM (length y) $ x θ
+  abcMCMC' n θ y'
+  where
+    abcMCMC' 0 _ _ = return []
+    abcMCMC' n θ y' = do
+      η <- q θ
+      y'' <- replicateM (length y) $ x η
+      let α = (k y'' y * πD η * qD θ η)
+            / (k y' y * πD θ * qD η θ)
+      b <- bernoulli α
+      if b
+        then liftM2 (++) (return [η]) (abcMCMC' (n-1) η y'')
+        else liftM2 (++) (return [θ]) (abcMCMC' (n-1) θ y')
+-- NOTE I suspect this version is buggy, I get very poor results even for the attempt with the Gaussian distribution
+-- The code, however, seems correct, suggesting that the issue lies with the underlying theory
+-- In particular, I need to do some reading: Fernhead and Prangle 2011; Blum 2013
