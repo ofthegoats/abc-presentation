@@ -10,10 +10,16 @@
 -- |
 -- | After ABC, learn Bayesian Synthetic Likelihood methods and present this as well
 
+{-# LANGUAGE ScopedTypeVariables #-}
+
 module ABC where
 
-import Probability ( RandVar(..) )
+import Probability
 import Control.Monad ( replicateM, liftM2 )
+import Data.List
+import qualified System.Random.MWC as MWC
+
+-- TODO replace with a fold-based implementation?
 
 -- | Approximate Bayesian Computation via Rejection Sampling
 -- | Generates a list of "acceptable" parameters for the given generative model
@@ -38,32 +44,67 @@ abcRejection n y ϵ s dist m π = do
      else return [])
     (abcRejection (n-1) y ϵ s dist m π)
 
-abcMCMC ::
+abcMH ::
+  forall p y s .
   Int -- ^ @n@ number of iterations
   -> [y] -- ^ @y@ real-world sample
-  -> ([y] -> [y] -> Double) -- ^ @k@ kernel
+  -> Double -- ^ @ϵ@ maximum distance before rejection
+  -> ([y] -> s) -- ^ @s@ summary statistic function
+  -> (s -> s -> Double) -- ^ distance function
   -> (p -> RandVar y) -- ^ @x@ generative model assumed
   -> RandVar p -- ^ @π@ prior
   -> (p -> Double) -- ^ prior density function
   -> (p -> RandVar p) -- ^ transition kernel
   -> (p -> p -> Double) -- ^ transition kernel density function
   -> RandVar [p]
-abcMCMC 0 _ _ _ _ _ _ _ = return []
-abcMCMC n y k x π πD q qD = do
+abcMH 0 _ _ _ _ _ _ _ _ _ = return []
+abcMH n y ϵ s dist gen π πd q qd = do
   θ <- π
-  y' <- replicateM (length y) $ x θ
-  abcMCMC' n θ y'
-  where
-    abcMCMC' 0 _ _ = return []
-    abcMCMC' n θ y' = do
-      η <- q θ
-      y'' <- replicateM (length y) $ x η
-      let α = (k y'' y * πD η * qD θ η)
-            / (k y' y * πD θ * qD η θ)
-      b <- bernoulli α
-      if b
-        then liftM2 (++) (return [η]) (abcMCMC' (n-1) η y'')
-        else liftM2 (++) (return [θ]) (abcMCMC' (n-1) θ y')
--- NOTE I suspect this version is buggy, I get very poor results even for the attempt with the Gaussian distribution
--- The code, however, seems correct, suggesting that the issue lies with the underlying theory
--- In particular, I need to do some reading: Fernhead and Prangle 2011; Blum 2013
+  x <- replicateM (length y) $ gen θ
+  if s y `dist` s x <= ϵ
+    then abcMCMC' (n-1) θ
+    else abcMH (n-1) y ϵ s dist gen π πd q qd
+  where abcMCMC' :: Int -> p -> RandVar [p]
+        abcMCMC' 0 _ = return []
+        abcMCMC' n θ = do
+          θ' <- q θ
+          x <- replicateM (length y) $ gen θ'
+          if s y `dist` s x <= ϵ
+            then liftM2 (++)
+                 (let h = min 1 (πd θ' / πd θ) * (qd θ' θ / qd θ θ')
+                  in (\x -> if x then return θ' else return θ) <$> bernoulli h)
+                 (abcMCMC' (n-1) θ')
+            else liftM2 (++) (return [θ]) (abcMCMC' (n-1) θ)
+
+summary :: Ord y => [y] -> (y,y,y,y,y)
+summary y =
+  let y' = sort y
+  in (head y', y' !! (length y `div` 4), y' !! (length y `div` 2), y' !! (3 * length y `div` 4), last y')
+
+distance :: (Double,Double,Double,Double,Double) -> (Double,Double,Double,Double,Double) -> Double
+distance (min₁, q1₁, q2₁, q3₁, max₁) (min₂,q1₂,q2₂,q3₂,max₂) =
+  (min₁ - min₂)**2 + (q1₁ - q1₂)**2 + (q2₁ - q2₂)**2 + (q3₁ - q3₂)**2 + (max₁ - max₂)**2
+
+model :: (Double,Double) -> RandVar Double
+model (μ,ss) = gaussian μ ss
+
+prior :: RandVar (Double,Double)
+prior = (,) <$> uniform' 0 10 <*> uniform' 0 10
+
+priorDensity :: (Double,Double) -> Double
+priorDensity (μ,ss) = 1 / 100
+
+transition :: (Double,Double) -> RandVar (Double,Double)
+transition (μ,ss) = (,) <$> gaussian μ 1 <*> gaussian ss 1
+
+transitionDensity :: (Double,Double) -> (Double,Double) -> Double
+transitionDensity (μ',ss') (μ,ss) =
+  let f x = (1 / sqrt (2 * pi * ss)) * exp ((-1/(2*ss)) * (x - μ)**2)
+  in f μ' * f ss'
+
+example = do
+  gen <- MWC.createSystemRandom
+  y <- replicateM 1000 $ random (gaussian 3 6) gen
+  θ <- random (abcMH 1000 y 0.3 summary distance model prior priorDensity transition transitionDensity) gen
+  print $ last θ
+  print $ ((sum . map fst $ θ)/ (fromIntegral . length $ θ), (sum . map snd $ θ)/ (fromIntegral . length $ θ))
