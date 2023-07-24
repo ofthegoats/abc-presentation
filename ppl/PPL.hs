@@ -7,24 +7,22 @@ import qualified System.Random.MWC as MWC
 import Control.Monad
 import Control.Monad.Reader
 
-sample :: MonadIO m => Dist ω -> MWC.GenIO -> m ω
-sample μ g = liftIO $ runReaderT (runDist μ) g
+runDist :: MonadIO m => Dist ω -> MWC.GenIO -> m ω
+runDist μ g = liftIO $ runReaderT (dist μ) g
 
 type Prob = Double
 
-newtype Dist ω = Dist { runDist :: ReaderT MWC.GenIO IO ω }
+newtype Dist ω = Dist { dist :: ReaderT MWC.GenIO IO ω }
   deriving (Functor, Applicative, Monad)
 
 type Uniform = Dist Double
 uniform01 :: Uniform
-uniform01 = Dist $ do
-  gen <- ask
-  MWC.uniform gen
+uniform01 = Dist $ ask >>= MWC.uniform
 
 uniform' :: Double -> Double -> Uniform
 uniform' a b = Dist $ do
   gen <- ask
-  x <- sample uniform01 gen
+  x <- runDist uniform01 gen
   return $ (b-a) * x + a
 
 type Bernoulli = Dist Bool
