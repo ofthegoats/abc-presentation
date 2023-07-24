@@ -93,6 +93,23 @@ abcRejectionPar yObs summary prior priorDensity model distance tolerance =
       , lastPar = Nothing
       }
 
+-- example of rejection sampling for a [Binomial 10 0.4] distribution
+binomialExample :: IO ()
+binomialExample =
+  let obs = [2,1,2,4,5,4,3,2,6,2,3,4,8,4,4,6,5,4,3,5,3,4,1,2,5,5,6,4,4,3] -- <<< replicateM 30 $ (bin 10 .4)
+      summary ω = (fromIntegral . sum) ω / (fromIntegral . length) ω
+      prior = uniform01
+      priorDensity = const 1
+      model p = replicateM 30 $ binomial' 10 p
+      distance s s' = (s - s')**2
+      tolerance = 1.0
+      pars = abcRejectionPar obs summary prior priorDensity model distance tolerance
+      estimate = abcMarjoram 1000 pars
+  in do
+    gen <- MWC.createSystemRandom
+    θs <- runDist estimate gen
+    print $ sum θs / (fromIntegral . length) θs
+
 abcMCMCPar :: ω -> (ω -> s) -> Dist θ -> (θ -> Double) -> (θ -> Dist θ) -> (θ -> θ -> Double) -> (θ -> Dist ω) -> (s -> s -> Double) -> Double -> AbcPar θ ω s
 abcMCMCPar yObs summary prior priorDensity proposal proposalDensity model distance tolerance =
   ABC { yObs = yObs
@@ -106,3 +123,24 @@ abcMCMCPar yObs summary prior priorDensity proposal proposalDensity model distan
       , tolerance = tolerance
       , lastPar = Nothing
       }
+
+-- ditto, using MCMC sampling
+binomialExample' :: IO ()
+binomialExample' =
+  let obs = [2,1,2,4,5,4,3,2,6,2,3,4,8,4,4,6,5,4,3,5,3,4,1,2,5,5,6,4,4,3] -- <<< replicateM 30 $ (bin 10 .4)
+      summary ω = (fromIntegral . sum) ω / (fromIntegral . length) ω
+      prior = uniform01
+      priorDensity = const 1
+      proposal θ = normal' θ 1
+      proposalDensity x μ = let σ² = 1 in exp $ (-1/(2*σ²)) * (x - μ)**2
+      model p = replicateM 30 $ binomial' 10 p
+      distance s s' = (s - s')**2
+      tolerance = 1.0
+      pars = abcMCMCPar obs summary prior priorDensity proposal proposalDensity model distance tolerance
+      estimate = abcMarjoram 1000 pars
+  in do
+    gen <- MWC.createSystemRandom
+    θs <- runDist estimate gen
+    let θs' = drop 970 θs
+    putStrLn $ (show . head) θs ++ " ... " ++ show θs'
+    print $ sum θs' / (fromIntegral . length) θs'
