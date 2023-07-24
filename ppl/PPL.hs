@@ -55,13 +55,15 @@ data AbcPar θ ω s =
       , proposalDensity :: θ -> θ -> Double
       , model :: θ -> Dist ω
       , distance :: s -> s -> Double
-      , tolerance :: Double
+      , tolerances :: [Double]
       , lastPar :: Maybe θ
       }
 
 abcMarjoram :: Int -> AbcPar θ ω s -> Dist [θ]
 abcMarjoram 0 _ = return []
-abcMarjoram n par@ABC{..} = let sObs = summary yObs in case lastPar of
+abcMarjoram n par@ABC{ tolerances=(tolerance : tolerances'), .. } = let
+  sObs = summary yObs
+  in case lastPar of
   Nothing -> do
     θ <- prior
     yGen <- model θ
@@ -75,12 +77,12 @@ abcMarjoram n par@ABC{..} = let sObs = summary yObs in case lastPar of
     let sGen = summary yGen
     accept <- bernoulli' $ min 1 $ (priorDensity θ' * proposalDensity last θ') / (priorDensity last * proposalDensity θ' last)
     if sObs `distance` sGen <= tolerance && accept
-      then (last:) <$> abcMarjoram (n-1) par{ lastPar = Just θ' } -- HERE!
+      then (last:) <$> abcMarjoram (n-1) par{ lastPar = Just θ', tolerances = tolerances' }
       else (last:) <$> abcMarjoram (n-1) par
 
 -- convenience constructor for rejection sampling
-abcRejectionPar :: ω -> (ω -> s) -> Dist θ -> (θ -> Double) -> (θ -> Dist ω) -> (s -> s -> Double) -> Double -> AbcPar θ ω s
-abcRejectionPar yObs summary prior priorDensity model distance tolerance =
+abcRejectionPar :: ω -> (ω -> s) -> Dist θ -> (θ -> Double) -> (θ -> Dist ω) -> (s -> s -> Double) -> [Double] -> AbcPar θ ω s
+abcRejectionPar yObs summary prior priorDensity model distance tolerances =
   ABC { yObs = yObs
       , summary = summary
       , prior = prior
@@ -89,7 +91,7 @@ abcRejectionPar yObs summary prior priorDensity model distance tolerance =
       , proposalDensity = const priorDensity
       , model = model
       , distance = distance
-      , tolerance = tolerance
+      , tolerances = tolerances
       , lastPar = Nothing
       }
 
@@ -102,16 +104,16 @@ binomialExample =
       priorDensity = const 1
       model p = replicateM 30 $ binomial' 10 p
       distance s s' = (s - s')**2
-      tolerance = 1.0
-      pars = abcRejectionPar obs summary prior priorDensity model distance tolerance
+      tolerances = repeat 1.0
+      pars = abcRejectionPar obs summary prior priorDensity model distance tolerances
       estimate = abcMarjoram 1000 pars
   in do
     gen <- MWC.createSystemRandom
     θs <- runDist estimate gen
     print $ sum θs / (fromIntegral . length) θs
 
-abcMCMCPar :: ω -> (ω -> s) -> Dist θ -> (θ -> Double) -> (θ -> Dist θ) -> (θ -> θ -> Double) -> (θ -> Dist ω) -> (s -> s -> Double) -> Double -> AbcPar θ ω s
-abcMCMCPar yObs summary prior priorDensity proposal proposalDensity model distance tolerance =
+abcMCMCPar :: ω -> (ω -> s) -> Dist θ -> (θ -> Double) -> (θ -> Dist θ) -> (θ -> θ -> Double) -> (θ -> Dist ω) -> (s -> s -> Double) -> [Double] -> AbcPar θ ω s
+abcMCMCPar yObs summary prior priorDensity proposal proposalDensity model distance tolerances =
   ABC { yObs = yObs
       , summary = summary
       , prior = prior
@@ -120,7 +122,7 @@ abcMCMCPar yObs summary prior priorDensity proposal proposalDensity model distan
       , proposalDensity = proposalDensity
       , model = model
       , distance = distance
-      , tolerance = tolerance
+      , tolerances = tolerances
       , lastPar = Nothing
       }
 
@@ -135,8 +137,8 @@ binomialExample' =
       proposalDensity x μ = let σ² = 1 in exp $ (-1/(2*σ²)) * (x - μ)**2
       model p = replicateM 30 $ binomial' 10 p
       distance s s' = (s - s')**2
-      tolerance = 1.0
-      pars = abcMCMCPar obs summary prior priorDensity proposal proposalDensity model distance tolerance
+      tolerances = replicate 500 1.0 <> replicate 100 0.9 <> replicate 100 0.8 <> replicate 100 0.7 <> replicate 100 0.6 <> replicate 100 0.5
+      pars = abcMCMCPar obs summary prior priorDensity proposal proposalDensity model distance tolerances
       estimate = abcMarjoram 1000 pars
   in do
     gen <- MWC.createSystemRandom
