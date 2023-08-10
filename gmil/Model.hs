@@ -7,7 +7,6 @@
 {-# LANGUAGE StandaloneKindSignatures #-}
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE DerivingVia #-}
-{-# LANGUAGE LambdaCase #-}
 
 module Model where
 
@@ -41,17 +40,3 @@ instance Monad (Model env) where
 instance (KnownSymbol x, Observable env x a) => IsLabel x (Model env (Maybe a)) where
   fromLabel :: Model env (Maybe a)
   fromLabel = Model $ \env -> observe (Var :: Var x) env
-
-egmod :: Observable env "y" Double => Model env Double
-egmod = Model $ \env -> let
-  y = runModel #y env
-  in fromMaybe 1 y
-
--- | Syntactic sugar to provide a default value/distribution
-(??) :: Model env (Maybe a) -> Model env a -> Model env a
-mdl ?? def = mdl >>= \case { Just x -> return x ; Nothing -> def }
-
-egmod' :: Observable env "y" Double => Model env Double
-egmod' = do
-  y <- #y ?? do return 1
-  return y
