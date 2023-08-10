@@ -32,16 +32,18 @@ instance (KnownSymbol x, x ~ x') => IsLabel x (Var x') where
   fromLabel = Var
 
 -- | List of observable variables
+-- | We don't want a variable to appear in this list more than once --- so it's
+-- | like an ordered set
 type Vars :: [Symbol] -> *
 data Vars xs where
   VNil :: Vars '[]
-  VCons :: Var x -> Vars xs -> Vars (x ': xs)
+  VCons :: x `NotIn` xs ~ 'True => Var x -> Vars xs -> Vars (x ': xs)
 
 vnil :: Vars '[]
 vnil = VNil
 
 infixr 6 <#>
-(<#>) :: Var x -> Vars xs -> Vars (x ': xs)
+(<#>) :: x `NotIn` xs ~ 'True => Var x -> Vars xs -> Vars (x ': xs)
 (<#>) = VCons
 
 -- | Assign a symbol to a type
@@ -52,14 +54,13 @@ data x `As` a = x := a
 type Env :: [Symbol `As` Type] -> *
 data Env env where
   ENil :: Env '[]
-  ECons :: Maybe a -> Env env -> Env (x := a ': env)
+  ECons :: x `NotIn` GetVars env ~ 'True => Maybe a -> Env env -> Env (x := a ': env)
 
 enil :: Env '[]
 enil = ENil
 
--- NOTE no unique variable constraint
 infixr 6 <:>
-(<:>) :: Var x `As` Maybe a -> Env env -> Env (x := a ': env)
+(<:>) :: x `NotIn` GetVars env ~ 'True => Var x `As` Maybe a -> Env env -> Env (x := a ': env)
 (_ := a) <:> env = ECons a env
 
 class Observable env x a | env x -> a where
@@ -81,3 +82,14 @@ eg2 = #x := Just 3 <:> #y := Nothing <:> enil
 -- >>> observe (Var :: Var "y") eg2
 -- Just 3
 -- Nothing
+
+type NotIn :: Symbol -> [Symbol] -> Bool
+type family NotIn x xs where
+  x `NotIn` '[] = True
+  x `NotIn` x ': xs = False
+  x `NotIn` (x' ': xs) = x `NotIn` xs
+
+type GetVars :: [Symbol `As` Type] -> [Symbol]
+type family GetVars env where
+  GetVars '[] = '[]
+  GetVars (x := _ ': env') = x ': GetVars env'
