@@ -9,8 +9,11 @@ module ABC where
 import PPL
 import RS
 import MH
+import Distributions
 
 import qualified System.Random.MWC as MWC
+
+import GHC.Prim
 
 -- | Approximate Bayesian Computation via Monte Carlo Rejection Sampling
 -- | à la Marjoram et al. 2003
@@ -22,7 +25,7 @@ data RSABC θ ω = RSABC
   , model :: θ -> Dist ω
   , distance :: ω -> ω -> Double
   , tolerance :: Double
-  , gen :: MWC.GenIO
+  , gen :: MWC.Gen RealWorld
   }
 
 instance RSKernel (RSABC θ ω) IO θ where
@@ -34,5 +37,31 @@ instance RSKernel (RSABC θ ω) IO θ where
     x <- runDist (model θ) gen
     return $ x `distance` observations <= tolerance
 
-abcMCMC :: Int -> ω -> (ω -> ω -> Double) -> [Double] -> Dist θ -> (θ -> Double) -> (θ -> Dist θ) -> (θ -> θ -> Double) -> (θ -> Dist ω) -> Maybe θ -> Dist [θ]
-abcMCMC n obs dist tols pri priD pro proD mod θ = mh n $ MHPars obs dist tols pri priD pro proD mod θ
+-- | Approximate Bayesian Computation via Gaussian Metropolis sampling
+-- | à la Marjoram et al. 2003
+-- | (That is, Metropolis-Hastings where the transition kernel is the Gaussian
+-- | distribution)
+
+type GMABC :: * -> * -> *
+data GMABC θ ω = GMABC
+  { observations :: ω
+  , model :: θ -> Dist ω
+  , priorDensity :: θ -> Double
+  , σ² :: Double -- ^ transition variance
+  , distance :: ω -> ω -> Double
+  , tolerance :: Double
+  , gen :: MWC.Gen RealWorld
+  }
+
+instance MHKernel (GMABC Double ω) IO Double where
+  accept :: GMABC Double ω -> Double -> Double -> IO Bool
+  accept GMABC{..} θ_0 θ_1 = let
+    α = min 1 $ priorDensity θ_1 / priorDensity θ_0
+    in do
+    x <- runDist (model θ_1) gen
+    if x `distance` observations <= tolerance
+      then runDist (bernoulli' α) gen
+      else return False
+
+  propose :: GMABC Double ω -> Double -> IO Double
+  propose GMABC{..} μ = runDist (normal' μ σ²) gen

@@ -1,35 +1,66 @@
--- | Metropolis Hastings as described in Marjoram et al. 2003.
+-- | "Higher Order" Metropolis Hastings
 
--- | Since Metropolis-Hastings is a fairly ubiquitous method, I provide a general
--- | Bayesian algorithm for it.
+-- | A generalisation of Metropolis Hastings, where the algorithm
+-- | is provided with a "kernel" which will
+-- | (a) provide samples
+-- | (b) decide whether or not to accept the sample
 
+{-
+NOTE
+The "kernel" system is just a "strategy pattern"
+For now I am avoiding a tuning strategy... TODO learn how MWC.Gen updates per usage
+
+When I do implement it, the kernel should be capable of updating itself with
+some kind of monad, similar to how MWC.Gen works.
+-}
+
+
+{-# LANGUAGE StandaloneKindSignatures #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE FunctionalDependencies #-}
 {-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE DuplicateRecordFields #-}
 
 module MH where
+
+import GHC.Types
 
 import PPL
 import Distributions
 
-data MHPars ω θ =
-  MHPars { observed :: ω
-         , distance :: ω -> ω -> Double
-         , tolerances :: [Double]
-         , prior :: Dist θ
-         , priorDensity :: θ -> Double
-         , proposal :: θ -> Dist θ
-         , proposalDensity :: θ -> θ -> Double
-         , model :: θ -> Dist ω
-         , lastParameter :: Maybe θ
-         }
+import qualified System.Random.MWC as MWC
 
-mh :: Int -> MHPars ω θ -> Dist [θ]
-mh 0 _ = return []
-mh n par@MHPars{ lastParameter=Nothing, ..} =
-  prior >>= \θ -> mh n par { lastParameter = Just θ }
-mh n par@MHPars{ tolerances = ϵ:ts', lastParameter = Just last, ..} = do
-  θ <- proposal last
-  x <- model θ
-  accept <- bernoulli' $ min 1 $ (priorDensity θ * proposalDensity θ last) / (priorDensity last * proposalDensity last θ)
-  if x `distance` observed <= ϵ && accept
-    then (θ:) <$> mh (n-1) par { lastParameter = Just θ, tolerances = ts' }
-    else (last:) <$> mh (n-1) par
+mh :: (MHKernel k m a) => Int -> a -> k -> m [a]
+mh 0 _ _ = return []
+mh n x_0 kernel = do
+  x_1 <- kernel `propose` x_0
+  α <- accept kernel x_0 x_1
+  if α
+    then (x_1:) <$> mh (n-1) x_1 kernel
+    else (x_0:) <$> mh (n-1) x_0 kernel
+
+type MHKernel :: * -> (* -> *) -> * -> Constraint
+class Monad m => MHKernel k m a | k -> a where
+  accept :: k -> a -> a -> m Bool
+  propose :: k -> a -> m a
+
+-- | Classical application of Metropolis-Hastings for sampling from a distribution
+-- * Move this to another file onMHGaussce it makes sensMHGausse to MHMCype MHGauss :: * -> *
+data MHMC ω = MHMC
+  { prior :: Dist ω
+  , priorDensity :: ω -> Double
+  , targetDensity :: ω -> Double
+  , transition :: ω -> Dist ω
+  , transitionDensity :: ω -> ω -> Double -- ^ first argument is condition
+  , gen :: MWC.GenIO
+  }
+
+instance MHKernel (MHMC ω) IO ω where
+  accept :: MHMC ω -> ω -> ω -> IO Bool
+  accept MHMC{..} last prop = let
+    α = (priorDensity prop / priorDensity last)
+      * (transitionDensity prop last / transitionDensity last prop)
+    in runDist (bernoulli' $ min 1 α) gen
+
+  propose :: MHMC ω -> ω -> IO ω
+  MHMC{..} `propose` x = runDist (transition x) gen

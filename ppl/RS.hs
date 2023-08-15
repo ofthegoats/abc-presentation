@@ -64,6 +64,7 @@ instance RSKernel (RSMC ω) IO ω where
   accept :: RSMC ω -> ω -> IO Bool
   RSMC{..} `accept` x = runDist (bernoulli' $ min 1 (targetDensity x / priorDensity x)) gen
 
+-- rejection sampling with target [Normal 0.5 0.1]
 classical :: IO ()
 classical = let
   kernel gen = RSMC
