@@ -15,7 +15,7 @@ import qualified System.Random.MWC as MWC
 import Control.Monad
 
 -- Example of ABC rejection sampling for [Binomial 10 0.4]
-binomialExampleRS :: IO ()
+binomialExampleRS :: IO [Double]
 binomialExampleRS = let
   summary x = (fromIntegral . sum) x / (fromIntegral . length) x
   kernel gen = RSABC
@@ -28,11 +28,10 @@ binomialExampleRS = let
     }
   in do
   gen <- MWC.createSystemRandom
-  x <- rs 1000 (kernel gen)
-  print $ sum x / (fromIntegral . length) x
+  rs 1000 (kernel gen)
 
 -- Example of Gaussian Metropolis sampling for [Binomial 10 0.4]
-binomialExampleGM :: IO ()
+binomialExampleGM :: IO [Double]
 binomialExampleGM = let
   summary x = (fromIntegral . sum) x / (fromIntegral . length) x
   kernel gen = GMABC
@@ -47,4 +46,9 @@ binomialExampleGM = let
   in do
   gen <- MWC.createSystemRandom
   x <- mh 1000 0.5 (kernel gen)
-  print . (\y -> sum y / (fromIntegral . length) y) $ drop 100 x
+  return $ drop 100 x
+
+main :: IO ()
+main = do
+  binomialExampleRS >>= print
+  binomialExampleGM >>= print
