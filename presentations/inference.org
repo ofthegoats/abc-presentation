@@ -1,0 +1,199 @@
+#+startup: beamer
+
+#+options: ':t *:t -:t ::t <:t H:3 \n:nil ^:t arch:headline author:t
+#+options: broken-links:nil c:nil creator:nil d:(not "LOGBOOK") date:nil e:t
+#+options: email:nil f:t inline:t num:t p:nil pri:nil prop:nil stat:t tags:t
+#+options: tasks:t tex:t timestamp:t title:t toc:t todo:t |:t
+#+title: ApproximateBayesianComputation.hs
+#+author: Piotr Kozicki
+#+email: piotr.kozicki.2022@bristol.ac.uk
+#+language: en
+#+select_tags: export
+#+exclude_tags: noexport
+#+cite_export:
+
+#+options: H:2
+#+latex_class: beamer
+#+columns: %45ITEM %10BEAMER_env(Env) %10BEAMER_act(Act) %4BEAMER_col(Col) %8BEAMER_opt(Opt)
+#+beamer_theme: Madrid
+#+beamer_color_theme:
+#+beamer_font_theme:
+#+beamer_inner_theme:
+#+beamer_outer_theme:
+#+beamer_header:
+
+# BUG unicode symbols don't appear
+# they are used in code
+# how to get LaTeX to show unicode symbols?
+
+# TODO want code highlighting
+
+
+* /briefly/: Bayesian Inference
+** Bayes' Theorem
+
+#+attr_latex: :options [Bayes' Theorem]
+#+begin_theorem
+\( p(a|b)p(b) = p(b|a)p(a) \).
+#+end_theorem
+
+#+begin_proof
+TOD.
+#+end_proof
+
+Often rewritten as
+
+\[
+\overbrace{p(\theta | x)}^{\text{posterior}}
+\propto
+\overbrace{p(x | \theta)}^{\text{likelihood}}
+\overbrace{p(\theta)}^{\text{prior}}.
+\]
+
+We get a distribution on hypotheses \theta given evidence \(x\).
+
+** Example
+
+#+begin_src
+xs <- (8, 2, 6, 6, 9) ~ Bin 10 θ
+ASS θ ~ U(0, 1) i.e. flat prior
+p(θ|x) = p(x|θ)p(θ) = p(x|θ)
+#+end_src
+
+\[
+p(\theta | x)
+=
+\prod_{x \in \text{xs}} \binom{10}{x} \theta^x (1 - \theta)^{10-x}
+\]
+
+#+begin_src R example1 :exports results :results graphics file :file example1.png
+xs <- c(8,2,6,6,9)
+posterior <- function (th) {
+  return(prod(mapply(\(x) (choose(10, x)) * th^x * (1 - th)^(10 - x), xs)))
+}
+curve(Vectorize(posterior)(x), from=0, to=1)
+#+end_src
+
+# BUG doesn't fit on the slide
+
+** Limitation
+
+\[
+\overbrace{p(\theta | x)}^{\text{posterior}}
+\propto
+\overbrace{p(x | \theta)}^{\text{likelihood}}
+\overbrace{p(\theta)}^{\text{prior}}
+\]
+
+See that we need to know the likelihood to get the posterior.
+
+\hfill
+
+In reality, \(p(x | \theta)\) can be very complicated or intractable.
+
+\hfill
+
+We can simplify our models or we can avoid likelihoods all together.
+
+* Approximate Bayesian Computation
+** ABC Overview
+
+Approximate Bayesian Computation requires:
+- a model \mu : \Theta \rightarrow =Dist= \Omega
+- observations \(\mathbf y\) : \Omega.
+
+#+beamer: \pause
+
+In gist:
+1. Take some \theta : \Theta.
+2. Take \(\mathbf x\) : \Omega \leftarrow \mu(\theta).
+3. If \(\mathbf x\) is "close" to \(\mathbf y\), say \theta is close to \theta*.
+
+#+beamer: \pause
+
+This is repeated a large number of times so we can approximate a distribution for \(\theta | \mathbf y\).
+
+To build this approximation, we use methods like rejection sampling or Metropolis-Hastings.
+
+** "Closeness"
+
+We introduce two new requirements:
+- a distance function: \rho : \Omega \times \Omega \rightarrow \mathbb R
+- a tolerance: \epsilon : \mathbb R.
+
+Then we accept \theta if \(\rho(\mathbf x, \mathbf y) \leq \epsilon\).
+
+\hfill
+
+An example \rho is \( \rho(\mathbf x, \mathbf y) = \sum_{i=1}^n (\mathbf x_i - \mathbf y_i)^2 \)
+
+** Summary Statistics
+
+If \Omega is high-dimensional, we will have a low acceptance rate due to the "Curse of Dimensionality".
+
+This means any samples we generate are likely to be far apart.
+
+\hfill
+
+We solve this by using summary statistics instead of raw data, for example quantiles.
+
+\[ S : \Omega^* \rightarrow \Omega ; \mathbf x \mapsto (x_{(0)}, Q_1, Q_2, Q_3, x_{(n)}) \]
+
+\hfill
+
+The quality of summary statistic is one of the main topics of current research in ABC.
+
+* Implementation
+** Rejection Sampling
+
+#+begin_src haskell
+class Monad m => RSKernel k m a | k -> a where
+  sample :: k -> m a
+  accept :: k -> a -> m Bool
+#+end_src
+
+#+begin_src haskell
+rs :: RSKernel k m a => Int -> k -> m [a]
+rs 0 _ = return []
+rs n kernel = do
+  x <- sample kernel
+  α <- kernel `accept` x
+  if α
+    then (x:) <$> rs (n-1) kernel
+    else rs (n-1) kernel
+#+end_src
+
+** Approximate Bayesian Computation
+
+#+begin_src haskell
+data RSABC θ ω = RSABC
+  { observations :: ω
+  , prior :: Dist θ
+  , model :: θ -> Dist ω
+  , distance :: ω -> ω -> Double
+  , tolerance :: Double
+  , gen :: MWC.Gen RealWorld
+  }
+
+instance RSKernel (RSABC θ ω) IO θ where
+  sample :: RSABC θ ω -> IO θ
+  sample RSABC{..} = runDist prior gen
+
+  accept :: RSABC θ ω -> θ -> IO Bool
+  RSABC{..} `accept` θ = do
+    x <- runDist (model θ) gen
+    return $ x `distance` observations <= tolerance
+#+end_src
+
+** Example
+* TODO Possible Extensions
+** Tuning
+
+MH to change parameters whilst running, so as to converge faster
+
+* Reading
+** Reading
+
+- Fernhead and Prangle
+- Marjoram et al. 2003
+- Umberto Picchini
