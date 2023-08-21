@@ -1,9 +1,9 @@
-#+startup: beamer
+#+startup: beamer content
 
 #+options: ':t *:t -:t ::t <:t H:3 \n:nil ^:t arch:headline author:t
 #+options: broken-links:nil c:nil creator:nil d:(not "LOGBOOK") date:nil e:t
 #+options: email:nil f:t inline:t num:t p:nil pri:nil prop:nil stat:t tags:t
-#+options: tasks:t tex:t timestamp:t title:t toc:t todo:t |:t
+#+options: tasks:t tex:t timestamp:t title:t toc:nil todo:t |:t
 #+title: ApproximateBayesianComputation.hs
 #+author: Piotr Kozicki
 #+email: piotr.kozicki.2022@bristol.ac.uk
@@ -14,20 +14,22 @@
 
 #+options: H:2
 #+latex_class: beamer
+#+latex_compiler: xelatex
+#+latex_header: \usepackage{fontspec}
+#+latex_header: \setsansfont{Fira Sans}
+#+latex_header: \setmonofont{Fira Code}[Contextuals=Alternate]
 #+columns: %45ITEM %10BEAMER_env(Env) %10BEAMER_act(Act) %4BEAMER_col(Col) %8BEAMER_opt(Opt)
-#+beamer_theme: Madrid
+#+beamer_theme: CambridgeUS
 #+beamer_color_theme:
 #+beamer_font_theme:
 #+beamer_inner_theme:
 #+beamer_outer_theme:
 #+beamer_header:
 
-# BUG unicode symbols don't appear
-# they are used in code
-# how to get LaTeX to show unicode symbols?
+# REFERENCE to insert graphics later
+#+latex_header: \titlegraphic{\includegraphics{Rplots}}
 
-# TODO want code highlighting
-
+# TODO code highlighting via lstlistings
 
 * /briefly/: Bayesian Inference
 ** Bayes' Theorem
@@ -52,7 +54,7 @@ Often rewritten as
 
 We get a distribution on hypotheses \theta given evidence \(x\).
 
-** Example
+** TODO Example
 
 #+begin_src
 xs <- (8, 2, 6, 6, 9) ~ Bin 10 θ
@@ -118,8 +120,8 @@ To build this approximation, we use methods like rejection sampling or Metropoli
 ** "Closeness"
 
 We introduce two new requirements:
-- a distance function: \rho : \Omega \times \Omega \rightarrow \mathbb R
-- a tolerance: \epsilon : \mathbb R.
+- a distance function: \rho : \Omega \times \Omega \rightarrow \(\mathbb R\)
+- a tolerance: \epsilon : \(\mathbb R\).
 
 Then we accept \theta if \(\rho(\mathbf x, \mathbf y) \leq \epsilon\).
 
@@ -143,30 +145,50 @@ We solve this by using summary statistics instead of raw data, for example quant
 
 The quality of summary statistic is one of the main topics of current research in ABC.
 
-* Implementation
-** Rejection Sampling
+* Inference
+** Setup
+
+Provide an inference algorithm, e.g. rejection sampling.
+
+\hfill
+
+Different inference algorithms depend on particular operations which drive the algorithm.
+
+\hfill
+
+We can provide one algorithm and several implementations of "drivers"
+
+* Rejection Sampling
+** Operations
+
+In rejection sampling, we need to be able to propose a new sample from the prior and decide whether or not to accept it.
 
 #+begin_src haskell
 class Monad m => RSKernel k m a | k -> a where
-  sample :: k -> m a
+  propose :: k -> m a
   accept :: k -> a -> m Bool
 #+end_src
+
+** Algorithm
 
 #+begin_src haskell
 rs :: RSKernel k m a => Int -> k -> m [a]
 rs 0 _ = return []
 rs n kernel = do
   x <- sample kernel
-  α <- kernel `accept` x
-  if α
+  a <- kernel `accept` x
+  if a
     then (x:) <$> rs (n-1) kernel
     else rs (n-1) kernel
 #+end_src
 
-** Approximate Bayesian Computation
+** ABC
+
+A simple carrier the kernel has the minimum amount of information to be able to
+generate new data and decide if it's close
 
 #+begin_src haskell
-data RSABC θ ω = RSABC
+data ABC θ ω = ABC
   { observations :: ω
   , prior :: Dist θ
   , model :: θ -> Dist ω
@@ -174,7 +196,11 @@ data RSABC θ ω = RSABC
   , tolerance :: Double
   , gen :: MWC.Gen RealWorld
   }
+#+end_src
 
+#+beamer: \pause
+
+#+begin_src haskell
 instance RSKernel (RSABC θ ω) IO θ where
   sample :: RSABC θ ω -> IO θ
   sample RSABC{..} = runDist prior gen
@@ -185,15 +211,11 @@ instance RSKernel (RSABC θ ω) IO θ where
     return $ x `distance` observations <= tolerance
 #+end_src
 
-** Example
-* TODO Possible Extensions
-** Tuning
-
-MH to change parameters whilst running, so as to converge faster
-
+** TODO Example
 * Reading
 ** Reading
 
 - Fernhead and Prangle
 - Marjoram et al. 2003
 - Umberto Picchini
+- Blum et al
