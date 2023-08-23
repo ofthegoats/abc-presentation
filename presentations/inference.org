@@ -4,7 +4,7 @@
 #+options: broken-links:nil c:nil creator:nil d:(not "LOGBOOK") date:nil e:t
 #+options: email:nil f:t inline:t num:t p:nil pri:nil prop:nil stat:t tags:t
 #+options: tasks:t tex:t timestamp:t title:t toc:nil todo:t |:t
-#+title: ApproximateBayesianComputation.hs
+#+title: Inference in Haskell for ABC
 #+author: Piotr Kozicki
 #+email: piotr.kozicki.2022@bristol.ac.uk
 #+language: en
@@ -27,21 +27,15 @@
 #+beamer_header:
 
 # REFERENCE to insert graphics later
-#+latex_header: \titlegraphic{\includegraphics{Rplots}}
+# #+latex_header: \titlegraphic{\includegraphics{Rplots}}
 
-# TODO code highlighting via lstlistings
-
-* /briefly/: Bayesian Inference
-** Bayes' Theorem
+* Approximate Bayesian Computation
+** Bayesian Inference
 
 #+attr_latex: :options [Bayes' Theorem]
 #+begin_theorem
 \( p(a|b)p(b) = p(b|a)p(a) \).
 #+end_theorem
-
-#+begin_proof
-TOD.
-#+end_proof
 
 Often rewritten as
 
@@ -55,167 +49,188 @@ Often rewritten as
 We get a distribution on hypotheses \theta given evidence \(x\).
 
 ** TODO Example
+** Motivation
 
-#+begin_src
-xs <- (8, 2, 6, 6, 9) ~ Bin 10 θ
-ASS θ ~ U(0, 1) i.e. flat prior
-p(θ|x) = p(x|θ)p(θ) = p(x|θ)
+In this example we used a simple distribution.
+In reality, especially in science, the likelihood may be very expensive to compute.
+
+\hfill
+
+To avoid this problem, we avoid likelihoods all together and instead consider
+only generative models.[fn:1]
+
+#+begin_src haskell
+newtype Sampler ω = Sampler {runSampler :: ReaderT Gen IO ω}
+  deriving (Functor, Applicative, Monad)
+
+sample :: Sampler ω -> Gen -> IO ω
+sample = runReaderT . runSampler
 #+end_src
 
+** ABC Description
+
+To be able to use ABC we need:
+1. A generative model \(\mu : \theta \to \texttt{Sampler}~\omega\)
+2. Real observations \(\mathbf y : \omega\)
+
+#+begin_src haskell
+accept :: Eq ω => ω -> Sampler ω -> θ -> Sampler Bool
+accept y μ θ = do
+  x <- μ θ
+  return $ x == y
+#+end_src
+
+By repeating this, we can generate samples from the posterior \(p(\theta|\mathbf y)\).
+
+#+beamer: \pause
+
+\hfill
+
+TODO example showing the problem
+
+We're not usually likely to generate a sample /exactly/ the same as our observations, so we get too low an acceptance rate.
+
+** Closeness
+
+To increase the acceptance rate, we usually use a weaker condition, that
+\(\mathbf x \approx \mathbf y\), by providing a distance function and a
+tolerance \(\epsilon\).
+
+#+begin_src haskell
+accept :: ω -> Sampler ω -> θ -> Double -> Sampler Bool
+accept y μ θ ϵ = do
+  x <- μ θ
+  return $ distance x y <= ϵ
+#+end_src
+
+The choice of distance function doesn't matter too much, so long as it's
+sensible. A good choice might be the sum of squared distances: naturally this depends on \(\omega\).
+
 \[
-p(\theta | x)
+\rho (\mathbf x, \mathbf y)
 =
-\prod_{x \in \text{xs}} \binom{10}{x} \theta^x (1 - \theta)^{10-x}
+\sum_{i=1}^n (\mathbf x_i - \mathbf y_i)^2
 \]
-
-#+begin_src R example1 :exports results :results graphics file :file example1.png
-xs <- c(8,2,6,6,9)
-posterior <- function (th) {
-  return(prod(mapply(\(x) (choose(10, x)) * th^x * (1 - th)^(10 - x), xs)))
-}
-curve(Vectorize(posterior)(x), from=0, to=1)
-#+end_src
-
-# BUG doesn't fit on the slide
-
-** Limitation
-
-\[
-\overbrace{p(\theta | x)}^{\text{posterior}}
-\propto
-\overbrace{p(x | \theta)}^{\text{likelihood}}
-\overbrace{p(\theta)}^{\text{prior}}
-\]
-
-See that we need to know the likelihood to get the posterior.
-
-\hfill
-
-In reality, \(p(x | \theta)\) can be very complicated or intractable.
-
-\hfill
-
-We can simplify our models or we can avoid likelihoods all together.
-
-* Approximate Bayesian Computation
-** ABC Overview
-
-Approximate Bayesian Computation requires:
-- a model \mu : \Theta \rightarrow =Dist= \Omega
-- observations \(\mathbf y\) : \Omega.
-
-#+beamer: \pause
-
-In gist:
-1. Take some \theta : \Theta.
-2. Take \(\mathbf x\) : \Omega \leftarrow \mu(\theta).
-3. If \(\mathbf x\) is "close" to \(\mathbf y\), say \theta is close to \theta*.
-
-#+beamer: \pause
-
-This is repeated a large number of times so we can approximate a distribution for \(\theta | \mathbf y\).
-
-To build this approximation, we use methods like rejection sampling or Metropolis-Hastings.
-
-** "Closeness"
-
-We introduce two new requirements:
-- a distance function: \rho : \Omega \times \Omega \rightarrow \(\mathbb R\)
-- a tolerance: \epsilon : \(\mathbb R\).
-
-Then we accept \theta if \(\rho(\mathbf x, \mathbf y) \leq \epsilon\).
-
-\hfill
-
-An example \rho is \( \rho(\mathbf x, \mathbf y) = \sum_{i=1}^n (\mathbf x_i - \mathbf y_i)^2 \)
 
 ** Summary Statistics
 
-If \Omega is high-dimensional, we will have a low acceptance rate due to the "Curse of Dimensionality".
+We rarely compare only one sample at a time, so usually the sample space \(\omega\) will have many dimensions.
 
-This means any samples we generate are likely to be far apart.
+This introduces the "curse of dimensionality", which here means any two samples we generate might seem to be far apart.
 
-\hfill
-
-We solve this by using summary statistics instead of raw data, for example quantiles.
-
-\[ S : \Omega^* \rightarrow \Omega ; \mathbf x \mapsto (x_{(0)}, Q_1, Q_2, Q_3, x_{(n)}) \]
+#+beamer: \pause
 
 \hfill
 
-The quality of summary statistic is one of the main topics of current research in ABC.
+We try to solve this by replacing raw data with summary statistics, e.g. quantiles.
 
-* Inference
-** Setup
+\[
+S : \omega \to s ; ~ \mathbf x \mapsto (\mathbf x_{(0)}, Q_1, Q_2, Q_3, \mathbf x_{(n)})
+\]
 
-Provide an inference algorithm, e.g. rejection sampling.
+Finding informative summary statistics is one of the bigger problems in ABC.
+** Sampling Methods
 
-\hfill
+Since ABC just gives us a way to decide whether or not to accept a value
+\(\theta\), we still need a way to produce and accumulate them.
 
-Different inference algorithms depend on particular operations which drive the algorithm.
-
-\hfill
-
-We can provide one algorithm and several implementations of "drivers"
+For this we can use Monte Carlo methods, such as rejection sampling or
+Metropolis-Hastings.
 
 * Rejection Sampling
-** Operations
+** Rejection Sampling
 
-In rejection sampling, we need to be able to propose a new sample from the prior and decide whether or not to accept it.
+A simple Monte-Carlo sampling method.
 
-#+begin_src haskell
-class Monad m => RSKernel k m a | k -> a where
-  propose :: k -> m a
-  accept :: k -> a -> m Bool
-#+end_src
+Proposals are taken from a prior, then we have to decide whether or not to accept them.
 
-** Algorithm
+#+beamer: \pause
 
 #+begin_src haskell
-rs :: RSKernel k m a => Int -> k -> m [a]
-rs 0 _ = return []
-rs n kernel = do
-  x <- sample kernel
-  a <- kernel `accept` x
-  if a
-    then (x:) <$> rs (n-1) kernel
-    else rs (n-1) kernel
-#+end_src
-
-** ABC
-
-A simple carrier the kernel has the minimum amount of information to be able to
-generate new data and decide if it's close
-
-#+begin_src haskell
-data ABC θ ω = ABC
-  { observations :: ω
-  , prior :: Dist θ
-  , model :: θ -> Dist ω
-  , distance :: ω -> ω -> Double
-  , tolerance :: Double
-  , gen :: MWC.Gen RealWorld
-  }
+class RSKernel k a | k -> a where
+  propose :: k -> IO a
+  accepts :: k -> a -> IO Bool
 #+end_src
 
 #+beamer: \pause
 
 #+begin_src haskell
-instance RSKernel (RSABC θ ω) IO θ where
-  sample :: RSABC θ ω -> IO θ
-  sample RSABC{..} = runDist prior gen
-
-  accept :: RSABC θ ω -> θ -> IO Bool
-  RSABC{..} `accept` θ = do
-    x <- runDist (model θ) gen
-    return $ x `distance` observations <= tolerance
+rs :: RSKernel k a => Int -> k -> IO [a]
+rs 0 _ = return []
+rs n k = do
+  x <- propose k
+  a <- k `accepts` x
+  if a
+    then (x:) <$> rs (n-1) k
+    else rs (n-1) k
 #+end_src
 
-** TODO Example
+** Distribution Approximation
+
+We provide a prior \(g\) we can sample from directly such that \(f \leq M \cdot g\).
+
+#+begin_src haskell
+data RSMC ω = RSMC
+  { prior :: Sampler ω
+  , priorDensity :: ω -> Double -- ^ scaled by M
+  , targetDensity :: ω -> Double
+  , gen :: Gen
+  }
+
+instance RSKernel (RSMC ω) ω where
+  propose :: RSMC ω -> IO ω
+  propose RSMC{..} = sample prior gen
+
+  accepts :: RSMC ω -> ω -> IO Bool
+  accepts RSMC{..} x = let
+    α = targetDensity x / priorDensity x
+    in sample (bernoulli $ min 1 α) gen
+#+end_src
+
+*demo*
+
+** Approximate Bayesian Computation
+
+#+begin_src haskell
+data RSABC θ ω = RSABC
+  { observations :: ω
+  , model :: θ -> Sampler ω
+  , prior :: Sampler θ
+  , distance :: ω -> ω -> Double
+  , tolerance :: Double
+  , gen :: Gen
+  }
+
+instance RSKernel (RSABC θ ω) θ where
+  propose :: RSABC θ ω -> IO θ
+  propose RSABC{..} = sample prior gen
+
+  accepts :: RSABC θ ω -> θ -> IO Bool
+  accepts RSABC{..} θ = do
+    x <- sample (model θ) gen
+    return $ distance x observations <= tolerance
+#+end_src
+
+*demo*
+
+* TODO Metropolis-Hastings
+** Metropolis-Hastings
+
+Notice that with rejection sampling we reject a large amount of samples.
+
+We can improve by staying near to "good" samples. This also means performing a random walk instead of resampling from the prior.
+
+** Algorithm
+** ABC
 * Reading
 ** Reading
 
-- Fernhead and Prangle
-- Marjoram et al. 2003
-- Umberto Picchini
-- Blum et al
+- [[https://www.pnas.org/doi/10.1073/pnas.0306899100][Marjoram et al]]
+- [[https://www.maths.lu.se/fileadmin/maths/forskning_research/InferPartObsProcess/abc_slides.pdf][Umberto Picchini's slides on ABC]]
+
+- [[https://arxiv.org/abs/1004.1112][Fernhead and Prangle --- Constructing Summary Statistics]]
+- [[https://projecteuclid.org/journals/statistical-science/volume-28/issue-2/A-Comparative-Review-of-Dimension-Reduction-Methods-in-Approximate-Bayesian/10.1214/12-STS406.full][Blum et al --- Comparative Review of Dimension Reduction Methods]]
+
+* Footnotes
+
+[fn:1] Extend to generative models /and/ density functions?
