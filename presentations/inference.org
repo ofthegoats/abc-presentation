@@ -18,6 +18,7 @@
 #+latex_header: \usepackage{fontspec}
 #+latex_header: \setsansfont{Fira Sans}
 #+latex_header: \setmonofont{Fira Code}[Contextuals=Alternate]
+#+latex_header: \usepackage{pgfplots}
 #+columns: %45ITEM %10BEAMER_env(Env) %10BEAMER_act(Act) %4BEAMER_col(Col) %8BEAMER_opt(Opt)
 #+beamer_theme: CambridgeUS
 #+beamer_color_theme:
@@ -48,7 +49,54 @@ Often rewritten as
 
 We get a distribution on hypotheses \theta given evidence \(x\).
 
-** TODO Example
+** Example
+
+Suppose \(x = (3~1~7~5~1~2~3~4~3~2)\) comes from \(Poi(\theta)\) assuming
+nothing about \(\theta\).
+
+*** :BMCOL:B_column:
+:PROPERTIES:
+:BEAMER_col: 0.5
+:BEAMER_env: column
+:END:
+
+#+begin_export latex
+\begin{align*}
+  p (\theta | x)
+  & \propto p (x | \theta) p (\theta) \\
+  & = p (x | \theta) = \prod_{i=1}^{10} p (x_i | \theta) \\
+  & \propto e^{-10 \theta} \theta^{31}
+\end{align*}
+#+end_export
+
+*** :BMCOL:B_column:
+:PROPERTIES:
+:BEAMER_col: 0.5
+:BEAMER_env: column
+:END:
+
+#+beamer: \pause
+
+#+begin_export latex
+\center
+\begin{tikzpicture}[scale=0.7]
+\begin{axis} [
+    axis lines = left,
+    xlabel = {\(\theta\)},
+    ylabel = {\(k \cdot p(\theta | X)\)},
+  ]
+  \addplot [
+    domain = 0:10,
+    samples = 200,
+    color = red,
+  ]
+  { (exp (-x * 10))
+    * x^(31) };
+  \addplot [color = black] coordinates {(3,0)(3,60)};
+\end{axis}
+\end{tikzpicture}
+#+end_export
+
 ** Motivation
 
 In this example we used a simple distribution.
@@ -88,13 +136,14 @@ By repeating this, we can generate samples from the posterior \(p(\theta|\mathbf
 
 TODO example showing the problem
 
-We're not usually likely to generate a sample /exactly/ the same as our observations, so we get too low an acceptance rate.
+\hfill
+
+Likely not to accept anything, so there is no approximation to the posterior.
 
 ** Closeness
 
 To increase the acceptance rate, we usually use a weaker condition, that
-\(\mathbf x \approx \mathbf y\), by providing a distance function and a
-tolerance \(\epsilon\).
+\(|| \mathbf x - \mathbf y || \leq \epsilon\).
 
 #+begin_src haskell
 accept :: ω -> Sampler ω -> θ -> Double -> Sampler Bool
@@ -122,13 +171,16 @@ This introduces the "curse of dimensionality", which here means any two samples 
 
 \hfill
 
-We try to solve this by replacing raw data with summary statistics, e.g. quantiles.
+We try to solve this by replacing raw data with summary statistics, e.g. quantiles. [fn:2]
 
 \[
 S : \omega \to s ; ~ \mathbf x \mapsto (\mathbf x_{(0)}, Q_1, Q_2, Q_3, \mathbf x_{(n)})
 \]
 
 Finding informative summary statistics is one of the bigger problems in ABC.
+
+TODO describe the two goals of summary statistics, informative and qualitative
+
 ** Sampling Methods
 
 Since ABC just gives us a way to decide whether or not to accept a value
@@ -233,4 +285,6 @@ We can improve by staying near to "good" samples. This also means performing a r
 
 * Footnotes
 
-[fn:1] Extend to generative models /and/ density functions?
+[fn:2] There is some research into alternative full-data approaches, linked at the end
+
+[fn:1] Possible extension?

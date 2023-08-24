@@ -61,7 +61,14 @@ approxWeibull = let
     , gen = gen }
   in do
     gen <- MWC.createSystemRandom
-    rs 2000 $ kernel gen
+    rs 10000 $ kernel gen
+
+{-
+import matplotlib.pyplot as plt
+x = [...] # copied from Haskell
+plt.hist(x, bins=25, range=(0, 5))
+plt.show()
+-}
 
 data RSABC θ ω = RSABC
   { observations :: ω
