@@ -60,6 +60,8 @@ nothing about \(\theta\).
 :BEAMER_env: column
 :END:
 
+#+beamer: \pause
+
 #+begin_export latex
 \begin{align*}
   p (\theta | x)
@@ -100,12 +102,12 @@ nothing about \(\theta\).
 ** Motivation
 
 In this example we used a simple distribution.
-In reality, especially in science, the likelihood may be very expensive to compute.
+In reality, the likelihood may be unavailable or intractable.
 
 \hfill
 
 To avoid this problem, we avoid likelihoods all together and instead consider
-only generative models.[fn:1]
+only generative models.
 
 #+begin_src haskell
 newtype Sampler ω = Sampler {runSampler :: ReaderT Gen IO ω}
@@ -122,72 +124,21 @@ To be able to use ABC we need:
 2. Real observations \(\mathbf y : \omega\)
 
 #+begin_src haskell
-accept :: Eq ω => ω -> Sampler ω -> θ -> Sampler Bool
+accept :: Eq ω => ω -> Sampler ω -> θ -> Sampler (θ, Double)
 accept y μ θ = do
   x <- μ θ
-  return $ x == y
+  return $ (θ, if x == y then 1 else 0)
 #+end_src
 
 By repeating this, we can generate samples from the posterior \(p(\theta|\mathbf y)\).
 
-#+beamer: \pause
-
-\hfill
-
-TODO example showing the problem
-
-\hfill
-
-Likely not to accept anything, so there is no approximation to the posterior.
-
-** Closeness
-
-To increase the acceptance rate, we usually use a weaker condition, that
-\(|| \mathbf x - \mathbf y || \leq \epsilon\).
-
-#+begin_src haskell
-accept :: ω -> Sampler ω -> θ -> Double -> Sampler Bool
-accept y μ θ ϵ = do
-  x <- μ θ
-  return $ distance x y <= ϵ
-#+end_src
-
-The choice of distance function doesn't matter too much, so long as it's
-sensible. A good choice might be the sum of squared distances: naturally this depends on \(\omega\).
-
-\[
-\rho (\mathbf x, \mathbf y)
-=
-\sum_{i=1}^n (\mathbf x_i - \mathbf y_i)^2
-\]
-
-** Summary Statistics
-
-We rarely compare only one sample at a time, so usually the sample space \(\omega\) will have many dimensions.
-
-This introduces the "curse of dimensionality", which here means any two samples we generate might seem to be far apart.
-
-#+beamer: \pause
-
-\hfill
-
-We try to solve this by replacing raw data with summary statistics, e.g. quantiles. [fn:2]
-
-\[
-S : \omega \to s ; ~ \mathbf x \mapsto (\mathbf x_{(0)}, Q_1, Q_2, Q_3, \mathbf x_{(n)})
-\]
-
-Finding informative summary statistics is one of the bigger problems in ABC.
-
-TODO describe the two goals of summary statistics, informative and qualitative
-
 ** Sampling Methods
 
-Since ABC just gives us a way to decide whether or not to accept a value
-\(\theta\), we still need a way to produce and accumulate them.
+See that ABC describes an indirection for weighting proposals for \(\theta\).
 
-For this we can use Monte Carlo methods, such as rejection sampling or
-Metropolis-Hastings.
+\hfill
+
+We still need to propose and accumulate values for \(\theta\), with a Monte Carlo method.
 
 * Rejection Sampling
 ** Rejection Sampling
@@ -203,8 +154,6 @@ class RSKernel k a | k -> a where
   propose :: k -> IO a
   accepts :: k -> a -> IO Bool
 #+end_src
-
-#+beamer: \pause
 
 #+begin_src haskell
 rs :: RSKernel k a => Int -> k -> IO [a]
@@ -248,8 +197,6 @@ data RSABC θ ω = RSABC
   { observations :: ω
   , model :: θ -> Sampler ω
   , prior :: Sampler θ
-  , distance :: ω -> ω -> Double
-  , tolerance :: Double
   , gen :: Gen
   }
 
@@ -260,20 +207,77 @@ instance RSKernel (RSABC θ ω) θ where
   accepts :: RSABC θ ω -> θ -> IO Bool
   accepts RSABC{..} θ = do
     x <- sample (model θ) gen
-    return $ distance x observations <= tolerance
+    return $ x == observations
 #+end_src
+
+*demo*
+* Improvements
+** Tolerance
+
+To increase the acceptance rate, we usually use a weaker condition, that
+\(|| \mathbf x - \mathbf y || \leq \epsilon\).
+
+#+begin_src haskell
+RSABC θ ω = RSABC
+  { distance :: ω -> ω -> Double
+  , tolerance :: Double
+  , ..
+  }
+
+instance RSKernel (RSABC θ ω) where
+  accepts :: RSABC θ ω -> θ -> IO Bool
+  accepts RSABC{..} θ = do
+    x <- sample (model θ) gen
+    return $ distance x y <= tolerance
+#+end_src
+
+The choice of distance function doesn't matter too much, so long as it's
+sensible. A good choice might be the sum of squared distances: naturally this depends on \(\omega\).
+*demo*
+
+** Summary Statistics
+
+We rarely compare only one sample at a time, so usually the sample space \(\omega\) will have many dimensions.
+
+This introduces the "curse of dimensionality", which here means any two samples we generate might seem to be far apart.
+
+#+beamer: \pause
+
+\hfill
+
+We try to solve this by replacing raw data with summary statistics, e.g. quantiles.
+
+\[
+S : \omega \to s ; ~ \mathbf x \mapsto (\mathbf x_{(0)}, Q_1, Q_2, Q_3, \mathbf x_{(n)})
+\]
+
+Finding informative summary statistics is one of the bigger problems in ABC.
+
+TODO describe the two goals of summary statistics, informative and qualitative
 
 *demo*
 
 * TODO Metropolis-Hastings
 ** Metropolis-Hastings
 
-Notice that with rejection sampling we reject a large amount of samples.
+An improvement on rejection sampling. Stay near to accepted samples by carrying
+out a /random walk/ over values of \(\theta\), rather than resampling from the
+prior.
 
-We can improve by staying near to "good" samples. This also means performing a random walk instead of resampling from the prior.
+#+begin_src haskell
+class MHKernel k a | k -> a where
+  propose :: k -> a -> IO a
+  accepts :: k -> a -> a -> IO Bool
+#+end_src
 
-** Algorithm
-** ABC
+#+begin_src haskell
+mh :: MHKernel k a => Int -> k -> a -> IO [a]
+mh 0 _ _ = return []
+mh n k x_0 = undefined
+#+end_src
+
+** Approximate Bayesian Computation
+** Tuning
 * Reading
 ** Reading
 
@@ -283,8 +287,4 @@ We can improve by staying near to "good" samples. This also means performing a r
 - [[https://arxiv.org/abs/1004.1112][Fernhead and Prangle --- Constructing Summary Statistics]]
 - [[https://projecteuclid.org/journals/statistical-science/volume-28/issue-2/A-Comparative-Review-of-Dimension-Reduction-Methods-in-Approximate-Bayesian/10.1214/12-STS406.full][Blum et al --- Comparative Review of Dimension Reduction Methods]]
 
-* Footnotes
-
-[fn:2] There is some research into alternative full-data approaches, linked at the end
-
-[fn:1] Possible extension?
+TODO full data methods
