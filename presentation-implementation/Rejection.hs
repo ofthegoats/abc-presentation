@@ -16,10 +16,10 @@ import Control.Monad
 import qualified System.Random.MWC as MWC
 
 class RSKernel k a | k -> a where
-  propose :: k -> IO a
-  accepts :: k -> a -> IO Bool
+  propose :: k -> Sampler a
+  accepts :: k -> a -> Sampler Bool
 
-rs :: RSKernel k a => Int -> k -> IO [a]
+rs :: RSKernel k a => Int -> k -> Sampler [a]
 rs 0 _ = return []
 rs n k = do
   x <- propose k
@@ -32,17 +32,16 @@ data RSMC ω = RSMC
   { prior :: Sampler ω
   , priorDensity :: ω -> Double -- ^ scaled by M
   , targetDensity :: ω -> Double
-  , gen :: Gen
   }
 
 instance RSKernel (RSMC ω) ω where
-  propose :: RSMC ω -> IO ω
-  propose RSMC{..} = sample prior gen
+  propose :: RSMC ω -> Sampler ω
+  propose RSMC{..} = prior
 
-  accepts :: RSMC ω -> ω -> IO Bool
+  accepts :: RSMC ω -> ω -> Sampler Bool
   accepts RSMC{..} x = let
     α = targetDensity x / priorDensity x
-    in sample (bernoulli $ min 1 α) gen
+    in (bernoulli $ min 1 α)
 
 data RSABC θ ω = RSABC
   { observations :: ω
@@ -50,14 +49,13 @@ data RSABC θ ω = RSABC
   , prior :: Sampler θ
   , distance :: ω -> ω -> Double
   , tolerance :: Double
-  , gen :: Gen
   }
 
 instance RSKernel (RSABC θ ω) θ where
-  propose :: RSABC θ ω -> IO θ
-  propose RSABC{..} = sample prior gen
+  propose :: RSABC θ ω -> Sampler θ
+  propose RSABC{..} = prior
 
-  accepts :: RSABC θ ω -> θ -> IO Bool
+  accepts :: RSABC θ ω -> θ -> Sampler Bool
   accepts RSABC{..} θ = do
-    x <- sample (model θ) gen
+    x <- model θ
     return $ distance x observations <= tolerance
