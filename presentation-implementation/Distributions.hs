@@ -15,6 +15,7 @@ random :: Sampler Double
 random = Sampler $ ask >>= MWC.uniform
 
 uniform :: Double -> Double -> Sampler Double
+uniform a b | a > b = uniform b a
 uniform a b | a <= b = (\x -> (b - a) * x + a) <$> random
 
 bernoulli :: Prob -> Sampler Bool

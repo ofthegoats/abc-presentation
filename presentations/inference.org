@@ -38,21 +38,21 @@
 \( p(a|b)p(b) = p(b|a)p(a) \).
 #+end_theorem
 
-Often rewritten as
+#+beamer: \pause
+
+Often rewritten with hypotheses \theta and evidence \(\mathbf x\)
 
 \[
-\overbrace{p(\theta | x)}^{\text{posterior}}
+\overbrace{p(\theta | \mathbf x)}^{\text{posterior}}
 \propto
-\overbrace{p(x | \theta)}^{\text{likelihood}}
+\overbrace{p(\mathbf x | \theta)}^{\text{likelihood}}
 \overbrace{p(\theta)}^{\text{prior}}.
 \]
 
-We get a distribution on hypotheses \theta given evidence \(x\).
-
 ** Example
 
-Suppose \(x = (3~1~7~5~1~2~3~4~3~2)\) comes from \(Poi(\theta)\) assuming
-nothing about \(\theta\).
+Suppose \(\mathbf x = (3~1~7~5~1~2~3~4~3~2)\) comes from \(Poi(\theta)\)
+assuming nothing about \(\theta\).
 
 *** :BMCOL:B_column:
 :PROPERTIES:
@@ -64,9 +64,9 @@ nothing about \(\theta\).
 
 #+begin_export latex
 \begin{align*}
-  p (\theta | x)
-  & \propto p (x | \theta) p (\theta) \\
-  & = p (x | \theta) = \prod_{i=1}^{10} p (x_i | \theta) \\
+  p (\theta | \mathbf x)
+  & \propto p (\mathbf x | \theta) p (\theta) \\
+  & \propto p (\mathbf x | \theta) = \prod_{i=1}^{10} p (\mathbf x_i | \theta) \\
   & \propto e^{-10 \theta} \theta^{31}
 \end{align*}
 #+end_export
@@ -85,7 +85,7 @@ nothing about \(\theta\).
 \begin{axis} [
     axis lines = left,
     xlabel = {\(\theta\)},
-    ylabel = {\(k \cdot p(\theta | X)\)},
+    ylabel = {\(k \cdot p(\theta | \mathbf x)\)},
   ]
   \addplot [
     domain = 0:10,
@@ -104,10 +104,14 @@ nothing about \(\theta\).
 In this example we used a simple distribution.
 In reality, the likelihood may be unavailable or intractable.
 
+#+beamer: \pause
+
 \hfill
 
 To avoid this problem, we avoid likelihoods all together and instead consider
 only generative models.
+
+#+beamer: \pause
 
 #+begin_src haskell
 newtype Sampler ω = Sampler {runSampler :: ReaderT Gen IO ω}
@@ -117,28 +121,67 @@ sample :: Sampler ω -> Gen -> IO ω
 sample = runReaderT . runSampler
 #+end_src
 
+** Example Samplers
+
+We can define our own Samplers by transforming existing Samplers.
+
+#+begin_src haskell
+uniform :: Double -> Double -> Sampler Double
+uniform a b | a <= b = (\x -> (b - a) * x + a) <$> random
+#+end_src
+
+#+beamer: \pause
+
+#+begin_src haskell
+bernoulli :: Prob -> Sampler Bool
+bernoulli p = (<=p) <$> uniform 0 1
+#+end_src
+
+#+beamer: \pause
+
+#+begin_src haskell
+binomial :: Int -> Prob -> Sampler Int
+binomial n p = length . filter id
+  <$> replicateM n (bernoulli p)
+#+end_src
+
+#+beamer: \pause
+
+#+begin_src haskell
+gaussian :: Double -> Double -> Sampler Double
+gaussian μ σ² = (\u₁ u₂ ->
+  μ + σ² * sqrt (-2 * log u₁) * cos (2 * pi * u₂))
+  <$> random <*> random
+#+end_src
+
 ** ABC Description
 
 To be able to use ABC we need:
-1. A generative model \(\mu : \theta \to \texttt{Sampler}~\omega\)
-2. Real observations \(\mathbf y : \omega\)
+#+beamer: \pause
+- A generative model \(\mu : \theta \to \texttt{Sampler}~\omega\)
+#+beamer: \pause
+- Observations \(\mathbf y : \omega\)
 
-#+begin_src haskell
-accept :: Eq ω => ω -> Sampler ω -> θ -> Sampler (θ, Double)
-accept y μ θ = do
-  x <- μ θ
-  return $ (θ, if x == y then 1 else 0)
-#+end_src
-
-By repeating this, we can generate samples from the posterior \(p(\theta|\mathbf y)\).
-
-** Sampling Methods
-
-See that ABC describes an indirection for weighting proposals for \(\theta\).
+#+beamer: \pause
 
 \hfill
 
-We still need to propose and accumulate values for \(\theta\), with a Monte Carlo method.
+To approximate \(p(\theta | \mathbf y)\)
+#+beamer: \pause
+we consider \(\theta_0\)
+#+beamer: \pause
+and take \(\mathbf x \leftarrow \mu (\theta_0)\)
+#+beamer: \pause
+which we compare with \(\mathbf y\)
+#+beamer: \pause
+to apply a weight to \(\theta_0\).
+
+#+beamer: \pause
+
+\hfill
+
+To approximate the posterior, this is repeated many times for different
+\(\theta\) using a Monte Carlo method.
 
 * Rejection Sampling
 ** Rejection Sampling
@@ -151,9 +194,11 @@ Proposals are taken from a prior, then we have to decide whether or not to accep
 
 #+begin_src haskell
 class RSKernel k a | k -> a where
-  propose :: k -> IO a
-  accepts :: k -> a -> IO Bool
+  propose :: k -> Sampler a
+  accepts :: k -> a -> Sampler Bool
 #+end_src
+
+#+beamer: \pause
 
 #+begin_src haskell
 rs :: RSKernel k a => Int -> k -> IO [a]
@@ -174,21 +219,21 @@ We provide a prior \(g\) we can sample from directly such that \(f \leq M \cdot 
 data RSMC ω = RSMC
   { prior :: Sampler ω
   , priorDensity :: ω -> Double -- ^ scaled by M
-  , targetDensity :: ω -> Double
-  , gen :: Gen
-  }
-
-instance RSKernel (RSMC ω) ω where
-  propose :: RSMC ω -> IO ω
-  propose RSMC{..} = sample prior gen
-
-  accepts :: RSMC ω -> ω -> IO Bool
-  accepts RSMC{..} x = let
-    α = targetDensity x / priorDensity x
-    in sample (bernoulli $ min 1 α) gen
+  , targetDensity :: ω -> Double }
 #+end_src
 
-*demo*
+#+beamer: \pause
+
+#+begin_src haskell
+instance RSKernel (RSMC ω) ω where
+  propose :: RSMC ω -> Sampler ω
+  propose RSMC{..} = prior
+
+  accepts :: RSMC ω -> ω -> Sampler Bool
+  accepts RSMC{..} x = let
+    α = targetDensity x / priorDensity x
+    in bernoulli $ min 1 α
+#+end_src
 
 ** Approximate Bayesian Computation
 
@@ -196,21 +241,22 @@ instance RSKernel (RSMC ω) ω where
 data RSABC θ ω = RSABC
   { observations :: ω
   , model :: θ -> Sampler ω
-  , prior :: Sampler θ
-  , gen :: Gen
-  }
+  , prior :: Sampler θ }
+#+end_src
 
+#+beamer: \pause
+
+#+begin_src haskell
 instance RSKernel (RSABC θ ω) θ where
-  propose :: RSABC θ ω -> IO θ
-  propose RSABC{..} = sample prior gen
+  propose :: RSABC θ ω -> Sampler θ
+  propose RSABC{..} = prior
 
-  accepts :: RSABC θ ω -> θ -> IO Bool
+  accepts :: RSABC θ ω -> θ -> Sampler Bool
   accepts RSABC{..} θ = do
-    x <- sample (model θ) gen
+    x <- model θ
     return $ x == observations
 #+end_src
 
-*demo*
 * Improvements
 ** Tolerance
 
@@ -221,23 +267,28 @@ To increase the acceptance rate, we usually use a weaker condition, that
 RSABC θ ω = RSABC
   { distance :: ω -> ω -> Double
   , tolerance :: Double
-  , ..
-  }
-
-instance RSKernel (RSABC θ ω) where
-  accepts :: RSABC θ ω -> θ -> IO Bool
-  accepts RSABC{..} θ = do
-    x <- sample (model θ) gen
-    return $ distance x y <= tolerance
+  , ... }
 #+end_src
 
-The choice of distance function doesn't matter too much, so long as it's
-sensible. A good choice might be the sum of squared distances: naturally this depends on \(\omega\).
-*demo*
+#+beamer: \pause
+
+#+begin_src haskell
+instance RSKernel (RSABC θ ω) where
+  accepts :: RSABC θ ω -> θ -> Sampler Bool
+  accepts RSABC{..} θ = do
+    x <- model θ
+    return $ x `distance` observations <= tolerance
+#+end_src
+
+#+beamer: \pause
+
+A sensible =distance= might be a sum of [weighted] squared distances.
 
 ** Summary Statistics
 
 We rarely compare only one sample at a time, so usually the sample space \(\omega\) will have many dimensions.
+
+#+beamer: \pause
 
 This introduces the "curse of dimensionality", which here means any two samples we generate might seem to be far apart.
 
@@ -245,39 +296,81 @@ This introduces the "curse of dimensionality", which here means any two samples 
 
 \hfill
 
-We try to solve this by replacing raw data with summary statistics, e.g. quantiles.
+We try to solve this by replacing raw data with summary statistics[fn:2].
 
-\[
-S : \omega \to s ; ~ \mathbf x \mapsto (\mathbf x_{(0)}, Q_1, Q_2, Q_3, \mathbf x_{(n)})
-\]
+#+beamer: \pause
 
-Finding informative summary statistics is one of the bigger problems in ABC.
+Ideally we have /sufficient/ summary statistics, i.e. \(S\) such that \(p(\theta | S(y)) = p(\theta | y)\).
 
-TODO describe the two goals of summary statistics, informative and qualitative
+#+beamer: \pause
 
-*demo*
+But this almost never happens, so we instead look for "informative" summaries[fn:1], e.g. quantiles are usually fine.
 
-* TODO Metropolis-Hastings
+* Metropolis-Hastings
 ** Metropolis-Hastings
 
 An improvement on rejection sampling. Stay near to accepted samples by carrying
 out a /random walk/ over values of \(\theta\), rather than resampling from the
 prior.
 
-#+begin_src haskell
-class MHKernel k a | k -> a where
-  propose :: k -> a -> IO a
-  accepts :: k -> a -> a -> IO Bool
-#+end_src
+#+beamer: \pause
 
 #+begin_src haskell
-mh :: MHKernel k a => Int -> k -> a -> IO [a]
+class MHKernel k a | k -> a where
+  perturb :: k -> a -> Sampler a
+  accepts :: k -> a -> a -> Sampler Bool
+#+end_src
+
+#+beamer: \pause
+
+#+begin_src haskell
+mh :: MHKernel k a => Int -> k -> a -> Sampler [a]
 mh 0 _ _ = return []
-mh n k x_0 = undefined
+mh n k x_0 = do
+  x_1 <- k `perturb` x_0
+  a <- accepts k x_0 x_1
+  if a
+    then (x_1:) <$> mh (n-1) k x_1
+    else (x_0:) <$> mh (n-1) k x_0
 #+end_src
 
 ** Approximate Bayesian Computation
-** Tuning
+
+#+begin_src haskell
+data MHABC θ ω = MHABC
+  { observations :: ω
+  , model :: θ -> Sampler ω
+  , prior :: θ -> Double -- ^ density
+  , transition :: θ -> Sampler θ -- ^ assumed symmetrical
+  , distance :: ω -> ω -> Double
+  , tolerance :: Double }
+#+end_src
+
+#+beamer: \pause
+
+#+begin_src haskell
+instance MHKernel (MHABC θ ω) θ where
+  perturb :: MHABC θ ω -> θ -> Sampler θ
+  perturb MHABC{..} = transition
+
+  accepts :: MHABC θ ω -> θ -> θ -> Sampler Bool
+  accepts MHABC{..} θ θ' = do
+    x <- model θ'
+    if distance x observations <= tolerance
+      then bernoulli $ min 1 (prior θ' / prior θ)
+      else return False
+#+end_src
+
+** Possible Improvements
+
+1. A tuning system, for adaptive Metropolis
+2. Multiple particles for MCMC
+
+If we start on a bad point, we are not likely to move. Adaptive Metropolis may
+change that by increasing/decreasing the variance.
+
+Having mutliple particles should also offset this problem.
+
 * Reading
 ** Reading
 
@@ -287,4 +380,9 @@ mh n k x_0 = undefined
 - [[https://arxiv.org/abs/1004.1112][Fernhead and Prangle --- Constructing Summary Statistics]]
 - [[https://projecteuclid.org/journals/statistical-science/volume-28/issue-2/A-Comparative-Review-of-Dimension-Reduction-Methods-in-Approximate-Bayesian/10.1214/12-STS406.full][Blum et al --- Comparative Review of Dimension Reduction Methods]]
 
-TODO full data methods
+- [[https://link.springer.com/article/10.1007/s11222-022-10092-4][Drovandi et Frazier --- Comparison with Full Data Methods]]
+
+* Footnotes
+[fn:2] Some (recent?) approaches to full-data ABC
+
+[fn:1] Key problem in ABC!
